@@ -13,30 +13,29 @@
 
 export const WIDGET_CSS = `
 :root{
-  /* color-scheme must follow the same signal as the tokens below. The theme
-     comes from window.openai.theme, but a color-scheme of "light dark"
-     lets the OS choose the canvas and the form-control palette — so a viewer
-     with ChatGPT in light mode and the OS in dark mode gets dark ink painted
-     on a dark ground. Bound explicitly to data-theme further down. */
+  /* color-scheme must follow the same signal as the tokens: the theme comes
+     from window.openai.theme, and letting the OS pick the canvas instead
+     paints dark ink on a dark ground for viewers whose OS and ChatGPT themes
+     disagree. Bound to data-theme below. */
   color-scheme: light;
-  /* No ground of its own. The widget sits inside ChatGPT's surface, so it
-     paints no background and inherits whatever the host is using. Every
-     colour below is either the host's text colour or a translucent overlay,
-     which keeps it legible on either theme without guessing at the exact
-     shade underneath. */
-  --ink:#1f2328; --sub:#6b7280;
-  --rule:rgba(0,0,0,.14); --rule-soft:rgba(0,0,0,.07);
-  --panel:transparent; --raise:rgba(0,0,0,.03); --track:rgba(0,0,0,.06);
-  --hilite:rgba(214,168,32,.20); --hilite-ink:#5c4708;
+  /* Purpose-built for the ChatGPT surface: no panels, no fills, no ground of
+     its own. Structure comes from hairlines and spacing; the only pigment is
+     the scenario palette, one amber highlight, and red/green verdicts. Every
+     neutral is a translucent overlay so it reads on whatever ChatGPT paints
+     underneath. */
+  --ink:#1a1e23; --sub:#69727c;
+  --rule:rgba(0,0,0,.16); --rule-soft:rgba(0,0,0,.08);
+  --raise:rgba(0,0,0,.04); --track:rgba(0,0,0,.07);
+  --hilite:rgba(214,168,32,.18); --hilite-ink:#5c4708;
   --market:#a3372a; --good:#1a6f5e;
   --s1:#98a1ab; --s2:#5d7d90; --s3:#2f6a6a; --s4:#3f7d52; --s5:#b8862c;
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
   --ink:#ececf1; --sub:#9aa3af;
-  --rule:rgba(255,255,255,.16); --rule-soft:rgba(255,255,255,.09);
-  --panel:transparent; --raise:rgba(255,255,255,.045); --track:rgba(255,255,255,.08);
-  --hilite:rgba(226,184,66,.22); --hilite-ink:#f0d691;
+  --rule:rgba(255,255,255,.18); --rule-soft:rgba(255,255,255,.10);
+  --raise:rgba(255,255,255,.05); --track:rgba(255,255,255,.09);
+  --hilite:rgba(226,184,66,.20); --hilite-ink:#f0d691;
   --market:#e78b7b; --good:#6fc39c;
   --s1:#7d8794; --s2:#7fa3b8; --s3:#5fae9f; --s4:#79b98d; --s5:#d7a955;
 }
@@ -44,9 +43,9 @@ export const WIDGET_CSS = `
   :root:not([data-theme="light"]){
     color-scheme: dark;
     --ink:#ececf1; --sub:#9aa3af;
-    --rule:rgba(255,255,255,.16); --rule-soft:rgba(255,255,255,.09);
-    --panel:transparent; --raise:rgba(255,255,255,.045); --track:rgba(255,255,255,.08);
-    --hilite:rgba(226,184,66,.22); --hilite-ink:#f0d691;
+    --rule:rgba(255,255,255,.18); --rule-soft:rgba(255,255,255,.10);
+    --raise:rgba(255,255,255,.05); --track:rgba(255,255,255,.09);
+    --hilite:rgba(226,184,66,.20); --hilite-ink:#f0d691;
     --market:#e78b7b; --good:#6fc39c;
     --s1:#7d8794; --s2:#7fa3b8; --s3:#5fae9f; --s4:#79b98d; --s5:#d7a955;
   }
@@ -56,71 +55,93 @@ export const WIDGET_CSS = `
 html,body{margin:0;padding:0}
 body{
   background:transparent; color:var(--ink);
-  font-family:'Iowan Old Style','Palatino Linotype',Palatino,Charter,Georgia,serif;
-  font-size:15px; line-height:1.5;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
 }
-.wrap{padding:14px}
+.wrap{padding:2px 1px}
 .mono{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
-.num{font-variant-numeric:tabular-nums}
 
-.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.eyebrow{font-size:11px;letter-spacing:.1em;color:var(--sub)}
-.title{font-size:19px;font-weight:700;margin:0;text-wrap:balance}
-.status-line{font-size:12px;color:var(--sub)}
+/* ---- header ---- */
+.eyebrow{font-size:10.5px;letter-spacing:.14em;color:var(--sub);margin-bottom:5px}
+.title{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.meta{font-size:12px;color:var(--sub);margin-top:3px}
 
-.tape-card{border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:14px;background:var(--raise)}
-.tape-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.tape-label{font-size:11px;letter-spacing:.08em;color:var(--sub)}
-.tape-ev{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;margin-left:8px;font-variant-numeric:tabular-nums}
-.tape-pct{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-weight:700}
-.tape-track{position:relative;height:32px;overflow:hidden;border-radius:6px;background:var(--track);border:1px solid var(--rule-soft)}
+/* ---- verdict ---- */
+.hero{margin:16px 0 4px}
+.hero-row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.ev-label{font-size:10.5px;letter-spacing:.14em;color:var(--sub)}
+.ev-num{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:30px;
+  font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.ev-vs{font-size:12.5px;color:var(--sub)}
+.ev-vs b{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-variant-numeric:tabular-nums}
+.tape-track{position:relative;height:24px;overflow:hidden;border-radius:6px;
+  background:var(--track);margin-top:10px}
 .tape-fill{position:absolute;inset:0;display:flex}
 .tape-seg{height:100%;transition:width .3s}
-.tape-mark{position:absolute;top:0;bottom:0;width:2px;background:var(--market)}
-.tape-legend{display:flex;justify-content:space-between;gap:8px;margin-top:5px;flex-wrap:wrap}
-.tape-keys{display:flex;flex-wrap:wrap;gap:3px 10px}
+.tape-mark{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--market)}
+.tape-legend{display:flex;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap}
+.tape-keys{display:flex;flex-wrap:wrap;gap:3px 12px}
 .tape-key{font-size:10.5px;color:var(--sub);display:flex;align-items:center;gap:4px}
-.tape-swatch{width:8px;height:8px;display:inline-block;flex:none}
-.tape-marklabel{font-size:10.5px;font-weight:700;color:var(--market)}
+.tape-key b{font-family:ui-monospace,Menlo,monospace;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.tape-swatch{width:8px;height:8px;border-radius:2px;display:inline-block;flex:none}
+.tape-marklabel{font-size:10.5px;font-weight:600;color:var(--market)}
 
-.controls{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+/* ---- controls ---- */
+.controls{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin:16px 0 4px}
 .presets{display:flex;gap:6px;flex-wrap:wrap}
-.btn{padding:5px 10px;font-size:12px;border:1px solid var(--rule);border-radius:6px;
+.btn{padding:4px 12px;font-size:12px;border:1px solid var(--rule);border-radius:999px;
   background:transparent;color:var(--ink);cursor:pointer;font-family:inherit}
-.btn:hover{background:var(--raise);border-color:var(--ink)}
+.btn:hover{background:var(--raise)}
 .btn:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
-.k-wrap{flex:1;min-width:170px;max-width:280px}
+.k-wrap{flex:1;min-width:180px;max-width:260px}
+.slider-row .lab{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11.5px;color:var(--sub)}
+.slider-row .val{font-family:ui-monospace,Menlo,monospace;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:4px;cursor:pointer;margin:5px 0 0;accent-color:var(--ink)}
 
-.scen{border:1px solid var(--rule);border-left-width:3px;border-left-style:solid;
-  border-radius:8px;margin-bottom:10px;padding:11px;background:transparent}
-.scen-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
-.scen-name{font-weight:700;font-size:14px}
-.scen-rule{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:10.5px;
-  background:var(--raise);border-radius:4px;padding:2px 5px;margin-left:5px}
-.scen-calc{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;font-variant-numeric:tabular-nums}
-.scen-desc{font-size:12.5px;color:var(--sub);margin:4px 0 8px}
-.slider-row .lab{display:flex;justify-content:space-between;font-size:12px;color:var(--sub)}
-.slider-row .val{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-weight:700}
-input[type=range]{width:100%;height:4px;cursor:pointer;margin:4px 0 0}
-.link{font-size:12px;color:var(--sub);background:none;border:none;font-family:inherit;
-  text-decoration:underline;cursor:pointer;padding:0;margin-top:6px}
-.math-box{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;
-  line-height:1.55;background:var(--raise);border-radius:6px;padding:7px 9px;margin-top:7px;overflow-x:auto}
-.assump-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;padding-top:9px;
-  border-top:1px dashed var(--rule)}
-.assump{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--sub)}
-.assump input{width:88px;padding:4px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
-  border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink)}
+/* ---- scenarios ---- */
+.scen{border-left:3px solid var(--rule);border-radius:1.5px;padding:10px 0 12px 14px;
+  margin:12px 0 0;background:transparent}
+.scen-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.scen-name{font-weight:650;font-size:13.5px}
+.scen-value{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.scen-value small{font-weight:400;color:var(--sub);font-family:inherit}
+.scen-rule{font-size:11.5px;color:var(--sub);font-style:italic;margin:1px 0 0}
+.scen-desc{font-size:12.5px;color:var(--sub);margin:5px 0 9px;max-width:68ch}
+.link{font-size:11.5px;color:var(--sub);background:none;border:none;font-family:inherit;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;padding:0;margin-top:7px}
+.link:hover{color:var(--ink)}
+.math-box{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11px;
+  line-height:1.6;border:1px solid var(--rule-soft);border-radius:6px;
+  padding:7px 9px;margin-top:8px;overflow-x:auto;color:var(--sub)}
+.assump-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px}
+.assump{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--sub)}
+.assump input{width:86px;padding:3px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  border:1px solid var(--rule);border-radius:5px;background:transparent;color:var(--ink)}
 
-.fin{border:1px solid var(--rule);border-radius:8px;padding:12px;margin-top:12px}
-.fin-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.fin-title{font-size:11px;letter-spacing:.08em;color:var(--sub)}
-.fin-unit{font-size:11px;color:var(--sub);font-family:ui-monospace,Menlo,monospace}
+/* ---- sections ---- */
+.sect{border-top:1px solid var(--rule-soft);margin-top:18px;padding-top:12px}
+.sect-label{font-size:10.5px;letter-spacing:.14em;color:var(--sub);margin-bottom:8px;
+  display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ledger-eq{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--sub);
+  margin-bottom:7px;word-wrap:break-word;font-variant-numeric:tabular-nums}
+.ledger-sum{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--hilite);
+  color:var(--hilite-ink);border-radius:5px;display:inline-block;padding:3px 8px;
+  font-variant-numeric:tabular-nums}
+.ledger-note{font-size:12.5px;color:var(--sub);margin:9px 0 0;max-width:72ch}
+
+/* ---- the three statements ---- */
+.fin-unit{font-size:11px;font-family:ui-monospace,Menlo,monospace;letter-spacing:0}
 .fin-stmt{margin-top:10px}
-.fin-stmt h4{font-size:12px;margin:0 0 4px;font-weight:700}
+.fin-stmt h4{font-size:12px;margin:0 0 3px;font-weight:650}
 .fin-scroll{overflow-x:auto}
 .fin table{width:100%;border-collapse:collapse;font-size:12px}
-.fin th{text-align:right;padding:3px 6px;font-size:11px;color:var(--sub);font-weight:400;
+.fin th{text-align:right;padding:3px 6px;font-size:10.5px;color:var(--sub);font-weight:400;
   border-bottom:1px solid var(--rule);white-space:nowrap}
 .fin th:first-child{text-align:left}
 .fin td{padding:3px 6px;border-bottom:1px solid var(--rule-soft);text-align:right;
@@ -128,36 +149,34 @@ input[type=range]{width:100%;height:4px;cursor:pointer;margin:4px 0 0}
 .fin td:first-child{text-align:left;font-family:inherit}
 .fin tr.total td{font-weight:700;border-bottom:none}
 .fin .neg{color:var(--market)}
-.warn{border:1px solid var(--market);border-radius:8px;padding:9px 11px;margin-bottom:12px;
-  font-size:12.5px;color:var(--market)}
-.note{border:1px solid var(--rule);border-radius:8px;padding:8px 11px;margin-bottom:12px;
-  font-size:12px;color:var(--sub)}
-.ledger{border:1px solid var(--rule);border-radius:8px;padding:12px;margin-top:12px;background:transparent}
-.ledger-title{font-size:11px;letter-spacing:.08em;color:var(--sub);margin-bottom:7px}
-.ledger-eq{font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-bottom:6px;
-  word-wrap:break-word;font-variant-numeric:tabular-nums}
-.ledger-sum{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--hilite);
-  color:var(--hilite-ink);border-radius:4px;display:inline-block;padding:3px 7px;font-variant-numeric:tabular-nums}
-.ledger-note{font-size:12.5px;color:var(--sub);margin:9px 0 0}
 
-.report{margin-top:14px;border-top:1px solid var(--rule);padding-top:14px}
-.report h3{font-size:15px;margin:16px 0 5px}
-.report h4{font-size:13px;margin:11px 0 3px}
-.report p{font-size:13px;margin:5px 0}
+/* ---- notices ---- */
+.warn{border:1px solid var(--market);border-radius:8px;padding:8px 11px;margin-bottom:12px;
+  font-size:12px;color:var(--market)}
+.note{font-size:11.5px;color:var(--sub);margin-bottom:10px}
+.note b{color:var(--ink)}
+
+/* ---- full report ---- */
+.report{margin-top:6px}
+.report h3{font-size:14px;margin:16px 0 5px;font-weight:650}
+.report h4{font-size:12.5px;margin:11px 0 3px;font-weight:650}
+.report p{font-size:12.5px;margin:5px 0;max-width:76ch}
 .report table{width:100%;border-collapse:collapse;font-size:12px;margin:7px 0}
-.report th{text-align:left;border-bottom:1px solid var(--ink);padding:4px 5px;font-size:11px}
+.report th{text-align:left;border-bottom:1px solid var(--ink);padding:4px 5px;font-size:10.5px}
 .report td{border-bottom:1px solid var(--rule-soft);padding:5px;vertical-align:top}
 .report td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;white-space:nowrap;
   font-variant-numeric:tabular-nums}
-.report .mathline{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;margin:2px 0 2px 10px;
-  white-space:pre-wrap}
-.report .mathfinal{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:11.5px;
-  background:var(--hilite);color:var(--hilite-ink);border-radius:4px;padding:2px 7px;display:inline-block;margin:3px 0 7px 10px}
+.report .mathline{font-family:ui-monospace,Menlo,monospace;font-size:11px;margin:2px 0 2px 10px;
+  white-space:pre-wrap;color:var(--sub)}
+.report .mathfinal{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:11px;
+  background:var(--hilite);color:var(--hilite-ink);border-radius:4px;padding:2px 7px;
+  display:inline-block;margin:3px 0 7px 10px}
 .report .evrow td{background:var(--hilite);color:var(--hilite-ink);font-weight:700}
 .tbl-scroll{overflow-x:auto}
-.fine{font-size:11.5px;color:var(--sub)}
-.foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--sub)}
-.waiting{padding:24px 14px;color:var(--sub);font-size:13px}
+.fine{font-size:11px;color:var(--sub)}
+.foot{margin-top:16px;padding-top:10px;border-top:1px solid var(--rule-soft);
+  font-size:11px;color:var(--sub)}
+.waiting{padding:20px 4px;color:var(--sub);font-size:13px}
 @media (prefers-reduced-motion: reduce){.tape-seg{transition:none}}
 `;
 
@@ -344,36 +363,35 @@ export function widgetMain() {
         + esc(state.K) + '% instead — set it with the slider below.</div>';
     }
 
-    html += '<div class="head"><div>'
-      + '<div class="eyebrow">NAV / EPV / GV · EXPECTED-VALUE METHOD</div>'
+    html += '<div class="eyebrow">NAV / EPV / GV · EXPECTED-VALUE METHOD</div>'
       + '<h1 class="title">' + esc(d.company) + " — what is it actually worth?</h1>"
       // K is bound to the live value, never to the input. A header that
       // reports the model's K while the engine runs a different one is how a
       // three-orders-of-magnitude error reads as a considered answer.
-      + '<div class="status-line">' + esc(d.status) + " · as of " + esc(d.asOf)
-      + ' · K = <span id="hdr-k"></span></div>'
-      + "</div></div>";
+      + '<div class="meta">' + esc(d.status) + " · as of " + esc(d.asOf)
+      + ' · K = <span id="hdr-k"></span></div>';
 
-    html += '<div class="tape-card">'
-      + '<div class="tape-head">'
-      + '<div><span class="tape-label">EXPECTED VALUE</span><span class="tape-ev" id="ev-num"></span></div>'
-      + '<div style="font-size:11px;color:var(--sub)"><span class="tape-pct" id="ev-pct"></span> of the mark</div>'
+    html += '<div class="hero">'
+      + '<div class="ev-label">EXPECTED VALUE</div>'
+      + '<div class="hero-row">'
+      + '<span class="ev-num" id="ev-num"></span>'
+      + '<span class="ev-vs"><b id="ev-pct"></b> of the ' + fmtB(d.mark.value)
+      + " mark (" + esc(d.mark.label) + ") — <b id=\"ev-delta\"></b> <span id=\"ev-word\"></span></span>"
       + "</div>"
       + '<div class="tape-track"><div class="tape-fill" id="tape-fill"></div>'
       + '<div class="tape-mark" id="tape-mark"></div></div>'
       + '<div class="tape-legend"><div class="tape-keys" id="tape-keys"></div>'
-      + '<span class="tape-marklabel">▲ mark ' + fmtB(d.mark.value) + " — " + esc(d.mark.label)
-      + "</span></div></div>";
+      + '<span class="tape-marklabel">▲ mark ' + fmtB(d.mark.value) + "</span></div></div>";
 
     html += '<div class="controls"><div class="presets" id="presets"></div>'
       + '<div class="k-wrap"><div class="slider-row">'
       + '<div class="lab"><span>K — cost of capital</span><span class="val" id="k-val"></span></div>'
-      + '<input type="range" id="k-slider" min="7" max="18" step="0.5" aria-label="Cost of capital">'
+      + '<input type="range" id="k-slider" min="5" max="20" step="0.5" aria-label="Cost of capital">'
       + "</div></div></div>";
 
     html += '<div id="scen-cards"></div>';
 
-    html += '<div class="ledger"><div class="ledger-title">THE LEDGER</div>'
+    html += '<div class="sect"><div class="sect-label">THE LEDGER</div>'
       + '<div class="ledger-eq" id="ledger-eq"></div>'
       + '<div class="ledger-sum" id="ledger-sum"></div>'
       + '<p class="ledger-note">' + esc(d.impliedProbs) + "</p></div>";
@@ -424,12 +442,14 @@ export function widgetMain() {
       card.className = "scen";
       card.style.borderLeftColor = scenColor(i);
       card.innerHTML =
-        '<div class="scen-head"><div>'
+        '<div class="scen-top">'
         + '<span class="scen-name">' + (i + 1) + ". " + esc(s.name) + "</span>"
-        + '<span class="scen-rule">' + esc(s.rule) + "</span></div>"
-        + '<div class="scen-calc" id="calc-' + i + '"></div></div>'
+        + '<span class="scen-value" id="calc-' + i + '"></span></div>'
+        + '<div class="scen-rule">' + esc(s.rule) + "</div>"
         + '<p class="scen-desc">' + esc(s.desc) + "</p>"
-        + '<div class="slider-row"><div class="lab"><span>Probability weight</span>'
+        // The weight and what it is worth, side by side: dragging the slider
+        // moves a dollar contribution, not an abstract percentage.
+        + '<div class="slider-row"><div class="lab"><span>Probability × value today</span>'
         + '<span class="val" id="pw-' + i + '"></span></div>'
         + '<input type="range" id="w-' + i + '" min="0" max="100" step="1" '
         + 'aria-label="Probability weight for ' + esc(s.name) + '" '
@@ -517,10 +537,20 @@ export function widgetMain() {
     document.getElementById("ev-num").textContent = fmtB(r.EV);
     var pctEl = document.getElementById("ev-pct");
     pctEl.textContent = Math.round((r.EV / d.mark.value) * 100) + "%";
-    pctEl.style.color = r.EV >= d.mark.value ? "var(--good)" : "var(--market)";
-    document.getElementById("k-val").textContent = state.K + "%";
+    var verdictColor = r.EV >= d.mark.value ? "var(--good)" : "var(--market)";
+    pctEl.style.color = verdictColor;
+    var deltaEl = document.getElementById("ev-delta");
+    var wordEl = document.getElementById("ev-word");
+    if (deltaEl) {
+      deltaEl.textContent = fmtB(Math.abs(d.mark.value - r.EV));
+      deltaEl.style.color = verdictColor;
+    }
+    if (wordEl) {
+      wordEl.textContent = r.EV >= d.mark.value ? "above it" : "below it";
+    }
+    document.getElementById("k-val").textContent = (Math.round(state.K * 10) / 10) + "%";
     var hdrK = document.getElementById("hdr-k");
-    if (hdrK) hdrK.textContent = state.K + "%";
+    if (hdrK) hdrK.textContent = (Math.round(state.K * 10) / 10) + "%";
 
     document.getElementById("tape-fill").innerHTML = r.contribs.map(function (c, i) {
       return '<div class="tape-seg" style="width:' + Math.max(0, (c / scale) * 100)
@@ -530,15 +560,17 @@ export function widgetMain() {
     document.getElementById("tape-mark").style.left = ((d.mark.value / scale) * 100) + "%";
     document.getElementById("tape-keys").innerHTML = d.scenarios.map(function (s, i) {
       return '<span class="tape-key"><span class="tape-swatch" style="background:'
-        + scenColor(i) + '"></span>' + esc(s.name) + " " + fmtB(r.contribs[i]) + "</span>";
+        + scenColor(i) + '"></span>' + esc(s.name) + " <b>" + fmtB(r.contribs[i]) + "</b></span>";
     }).join("");
 
     d.scenarios.forEach(function (s, i) {
+      // Top right: what this world is worth today. Slider label: the weight
+      // and the dollars that weight puts into the expected value.
       document.getElementById("calc-" + i).innerHTML =
-        fmtB(r.vals[i]) + " × " + (r.probs[i] * 100).toFixed(0) + "% = <b>"
-        + fmtB(r.contribs[i]) + "</b>";
+        fmtB(r.vals[i]) + " <small>today</small>";
       document.getElementById("pw-" + i).textContent =
-        state.weights[i] + " → " + (r.probs[i] * 100).toFixed(0) + "%";
+        (r.probs[i] * 100).toFixed(0) + "% × " + fmtB(r.vals[i])
+        + " = " + fmtB(r.contribs[i]);
       var mx = document.getElementById("mx-" + i);
       if (mx) mx.textContent = scenarioMath(s, state.K);
     });
@@ -590,8 +622,7 @@ export function widgetMain() {
       return h + "</table></div></div>";
     };
 
-    return '<div class="fin"><div class="fin-head">'
-      + '<span class="fin-title">THE THREE STATEMENTS</span>'
+    return '<div class="sect fin"><div class="sect-label">THE THREE STATEMENTS'
       + '<span class="fin-unit">' + esc(f.unit || "$B") + "</span></div>"
       + table("Income statement", f.income)
       + table("Balance sheet", f.balance)
@@ -667,7 +698,12 @@ export function widgetMain() {
   /* ---------- boot ---------- */
   function readData() {
     var o = window.openai || {};
-    var candidates = [o.toolInput, o.toolOutput];
+    // toolOutput carries the server's structuredContent — the worksheet after
+    // validation and unit coercion. toolInput is the model's raw arguments,
+    // which never passed through the server: on a rejected call it is the
+    // only thing available, and it is exactly the payload that put K = 0.085
+    // on screen. Prefer the validated copy whenever the host provides it.
+    var candidates = [o.toolOutput, o.toolInput];
     for (var i = 0; i < candidates.length; i++) {
       var c = candidates[i];
       if (!c) continue;

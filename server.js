@@ -20,7 +20,7 @@ const SERVER_VERSION = "1.0.0";
 // The URI doubles as ChatGPT's cache key for the rendered component, so it
 // carries a version: bump it whenever the widget changes shape, or hosts keep
 // serving the copy they cached.
-const WIDGET_URI = "ui://margin-of-safety/worksheet-v6.html";
+const WIDGET_URI = "ui://margin-of-safety/worksheet-v7.html";
 // ChatGPT stores the template URI when an app is installed and keeps asking
 // for that exact pointer; it does not follow a rename. Any install made before
 // a URI change would 404 with "Failed to fetch template", so old pointers stay
@@ -31,6 +31,7 @@ const LEGACY_WIDGET_URIS = [
   "ui://margin-of-safety/worksheet-v3.html",
   "ui://margin-of-safety/worksheet-v4.html",
   "ui://margin-of-safety/worksheet-v5.html",
+  "ui://margin-of-safety/worksheet-v6.html",
 ];
 // Required exactly. An unrecognised type renders as "Error loading app".
 const WIDGET_MIME = "text/html;profile=mcp-app";
@@ -73,7 +74,10 @@ function widgetResource(origin) {
       // The widget is fully self-contained: no network calls, no external assets.
       ui: {
         domain: origin,
-        prefersBorder: true,
+        // No host card: the widget paints no ground of its own and sits
+        // directly on the conversation surface. prefersBorder asks ChatGPT
+        // to wrap it in a panel — the grey box, on some builds.
+        prefersBorder: false,
         csp: { connectDomains: [], resourceDomains: [] },
       },
       "openai/widgetDomain": origin,

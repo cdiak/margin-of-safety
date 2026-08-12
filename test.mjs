@@ -194,6 +194,29 @@ check("  and passes the coerced K to the widget", sv.structuredContent.worksheet
 const still = await serverCall(Object.assign(clone(), { K: 45 }));
 check("server still rejects a K that means nothing (45)", !!still.isError, true);
 
+console.log("\ndata source priority");
+
+// The widget must render the server-validated worksheet when the host
+// provides it, not the model's raw arguments. toolOutput K=9 with a raw
+// toolInput K=8.5 proves which one won.
+{
+  const validated = clone(); validated.K = 9;
+  const { doc, byId } = fakeDom();
+  const open2 = WIDGET_HTML.indexOf('<script type="module">');
+  const src2 = WIDGET_HTML.slice(open2 + '<script type="module">'.length,
+    WIDGET_HTML.indexOf("</script>", open2));
+  const win2 = {
+    openai: { toolInput: clone(), toolOutput: { worksheet: validated },
+      widgetState: null, theme: "dark", setWidgetState() {} },
+    addEventListener() {}, matchMedia: () => ({ matches: false }),
+    setInterval: () => 0, clearInterval: () => {},
+  };
+  new Function("window", "document", "setInterval", "clearInterval", src2)(
+    win2, doc, () => 0, () => {});
+  check("prefers the server-validated toolOutput over raw toolInput",
+    byId.get("k-val")?.textContent ?? "", "9%");
+}
+
 console.log("\ndisplay honesty");
 
 check("the header reports the K actually in use", poisoned.hdrK, poisoned.k);
