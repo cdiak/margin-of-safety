@@ -590,7 +590,15 @@ export function widgetMain() {
   /* ---------- the three statements ---------- */
   function financialsHTML() {
     var f = state.data.financials;
-    if (!f || !Array.isArray(f.periods) || !f.periods.length) return "";
+    // A missing section is invisible; a present-but-empty one asks a question.
+    // The reader should know the statements were not supplied, not wonder
+    // whether the tool has them at all.
+    if (!f || !Array.isArray(f.periods) || !f.periods.length) {
+      return '<div class="sect fin"><div class="sect-label">THE THREE STATEMENTS</div>'
+        + '<p class="ledger-note">Not supplied on this run — the model did not pass '
+        + "income statement, balance sheet or cash flow data. Its text reply should "
+        + "carry them instead; ask for them there if it does not.</p></div>";
+    }
 
     // Accounting convention: parenthesised negatives, right-aligned, aligned
     // decimals. Anyone who reads statements reads them this way.

@@ -80,7 +80,8 @@ function bootWidget(worksheet, widgetState) {
   );
 
   const text = (id) => byId.get(id)?.textContent ?? "";
-  return { ev: text("ev-num"), k: text("k-val"), hdrK: text("hdr-k"), saved: win.__saved };
+  return { ev: text("ev-num"), k: text("k-val"), hdrK: text("hdr-k"), saved: win.__saved,
+    rootHtml: byId.get("mos-root")?.innerHTML ?? "" };
 }
 
 /* ---------- fixture ---------- */
@@ -162,6 +163,17 @@ console.log("\nunit coercion");
 // model's raw arguments.
 const clone = () => JSON.parse(JSON.stringify(WORKSHEET));
 
+const serverCall = async (args) => {
+  const res = await handleRequest(new Request("http://test/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "render_margin_of_safety_worksheet", arguments: args } }),
+  }));
+  return (await res.json()).result;
+};
+
+
 const fracK = clone(); fracK.K = 0.085;
 const fk = bootWidget(fracK, null);
 check("widget reads a toolInput K of 0.085 as 8.5%", fk.k, "8.5%");
@@ -176,16 +188,6 @@ check("widget reads probabilities summing to 1 as percentages", bootWidget(fracP
 const point5 = clone(); point5.K = 12;
 check("widget leaves a legitimate K of 12 alone", bootWidget(point5, null).k, "12%");
 
-const serverCall = async (args) => {
-  const res = await handleRequest(new Request("http://test/mcp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call",
-      params: { name: "render_margin_of_safety_worksheet", arguments: args } }),
-  }));
-  return (await res.json()).result;
-};
-
 const sv = await serverCall(Object.assign(clone(), { K: 0.085 }));
 check("server accepts K = 0.085 by coercion", !!sv.isError, false);
 check("  notes the coercion in the output", sv.content[0].text.includes("read as 8.5%"), true);
@@ -193,6 +195,35 @@ check("  and passes the coerced K to the widget", sv.structuredContent.worksheet
 
 const still = await serverCall(Object.assign(clone(), { K: 45 }));
 check("server still rejects a K that means nothing (45)", !!still.isError, true);
+
+console.log("\nthe three statements");
+
+// bootWidget's fixture has no financials, so absence is the default path.
+{
+  const bare = bootWidget(clone(), null);
+  check("widget names the missing statements instead of hiding the section",
+    /THE THREE STATEMENTS/.test(bare.rootHtml) && /Not supplied on this run/.test(bare.rootHtml), true);
+
+  const withFin = clone();
+  withFin.financials = { unit: "$B", periods: ["FY2025", "FY2026"],
+    income: [{ line: "Revenue", values: [60, 64] }],
+    balance: [{ line: "Total assets", values: [130, 139] }],
+    cashFlow: [{ line: "Free cash flow", values: [11, 12] }] };
+  const fin = bootWidget(withFin, null);
+  check("widget renders supplied statements as tables",
+    /Income statement/.test(fin.rootHtml) && /Free cash flow/.test(fin.rootHtml)
+      && !/Not supplied on this run/.test(fin.rootHtml), true);
+
+  const svBare = await serverCall(clone());
+  check("server flags the omission in the text output",
+    /MISSING: the three statements/.test(svBare.content[0].text), true);
+  check("  and tells the model not to call again",
+    /Do NOT call the tool again/.test(svBare.content[0].text), true);
+
+  const svFin = await serverCall(withFin);
+  check("server stays quiet when the statements are supplied",
+    /MISSING: the three statements/.test(svFin.content[0].text), false);
+}
 
 console.log("\ndata source priority");
 

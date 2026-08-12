@@ -20,7 +20,7 @@ const SERVER_VERSION = "1.0.0";
 // The URI doubles as ChatGPT's cache key for the rendered component, so it
 // carries a version: bump it whenever the widget changes shape, or hosts keep
 // serving the copy they cached.
-const WIDGET_URI = "ui://margin-of-safety/worksheet-v7.html";
+const WIDGET_URI = "ui://margin-of-safety/worksheet-v8.html";
 // ChatGPT stores the template URI when an app is installed and keeps asking
 // for that exact pointer; it does not follow a rename. Any install made before
 // a URI change would 404 with "Failed to fetch template", so old pointers stay
@@ -32,6 +32,7 @@ const LEGACY_WIDGET_URIS = [
   "ui://margin-of-safety/worksheet-v4.html",
   "ui://margin-of-safety/worksheet-v5.html",
   "ui://margin-of-safety/worksheet-v6.html",
+  "ui://margin-of-safety/worksheet-v7.html",
 ];
 // Required exactly. An unrecognised type renders as "Error loading app".
 const WIDGET_MIME = "text/html;profile=mcp-app";
@@ -292,6 +293,17 @@ function dispatch(msg, origin) {
         });
       }
 
+      // The statements are required by the schema, but a host that enforces
+      // required fields loosely can still deliver a call without them.
+      // Rejecting would paint a second widget (every invocation renders), so
+      // accept, and make the absence loud: name it in the output and tell the
+      // model to put the statements in its text reply — NOT to call again.
+      const f = worksheet.financials;
+      const hasStatements = !!(f && Array.isArray(f.periods) && f.periods.length
+        && Array.isArray(f.income) && f.income.length
+        && Array.isArray(f.balance) && f.balance.length
+        && Array.isArray(f.cashFlow) && f.cashFlow.length);
+
       const { ev, vals } = expectedValue(worksheet);
       const pct = Math.round((ev / worksheet.mark.value) * 100);
       const total = worksheet.scenarios.reduce((a, x) => a + (Number(x.prob) || 0), 0) || 1;
@@ -336,6 +348,12 @@ function dispatch(msg, origin) {
         "The interactive worksheet is on screen: drag the probabilities, change K, and edit any",
         "scenario's assumptions to see the expected value move.",
         ...(unitNotes.length ? ["", "Unit note: " + unitNotes.join("; ") + "."] : []),
+        ...(hasStatements ? [] : ["",
+          "MISSING: the three statements (income, balance sheet, cash flow) were not "
+          + "supplied, so the worksheet shows the valuation without its evidence base. "
+          + "Do NOT call the tool again for this company. Instead, include the three "
+          + "statements as markdown tables in your text reply, from the filings you "
+          + "already researched."]),
       ].join("\n");
 
       return rpcResult(id, {

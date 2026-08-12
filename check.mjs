@@ -19,7 +19,7 @@
 
 import { WIDGET_HTML } from "./widget.js";
 
-const RESOURCE_URI = "ui://margin-of-safety/worksheet-v7.html";
+const RESOURCE_URI = "ui://margin-of-safety/worksheet-v8.html";
 
 async function fetchDeployed(base) {
   const res = await fetch(base.replace(/\/$/, "") + "/mcp", {
