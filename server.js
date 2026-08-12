@@ -20,7 +20,7 @@ const SERVER_VERSION = "1.0.0";
 // The URI doubles as ChatGPT's cache key for the rendered component, so it
 // carries a version: bump it whenever the widget changes shape, or hosts keep
 // serving the copy they cached.
-const WIDGET_URI = "ui://margin-of-safety/worksheet-v4.html";
+const WIDGET_URI = "ui://margin-of-safety/worksheet-v6.html";
 // ChatGPT stores the template URI when an app is installed and keeps asking
 // for that exact pointer; it does not follow a rename. Any install made before
 // a URI change would 404 with "Failed to fetch template", so old pointers stay
@@ -29,6 +29,8 @@ const LEGACY_WIDGET_URIS = [
   "ui://widget/margin-of-safety.html",
   "ui://margin-of-safety/worksheet-v2.html",
   "ui://margin-of-safety/worksheet-v3.html",
+  "ui://margin-of-safety/worksheet-v4.html",
+  "ui://margin-of-safety/worksheet-v5.html",
 ];
 // Required exactly. An unrecognised type renders as "Error loading app".
 const WIDGET_MIME = "text/html;profile=mcp-app";
@@ -103,6 +105,44 @@ const TOOL = {
 };
 
 /* ---------- worksheet checks ---------- */
+
+// The one input mistake models make over and over: rates as decimal
+// fractions (0.085 for 8.5%) where the contract says percentage points.
+// Rejecting it does not protect anyone here — on this host a rejected call
+// still paints a widget, so a validation error turns into a retry and TWO
+// dashboards, one of them wrong. The mistake is unambiguous (no real cost of
+// capital is 0.085%), so read it as intended, and say so in the output where
+// the model and the reader can both see it.
+function normalizeUnits(w) {
+  const notes = [];
+  const asPct = (n) => Math.round(n * 100 * 1000) / 1000;
+  if (w && typeof w.K === "number" && w.K > 0 && w.K < 1) {
+    notes.push("K = " + w.K + " read as " + asPct(w.K) + "% (rates are percentage points)");
+    w.K = asPct(w.K);
+  }
+  if (w && Array.isArray(w.scenarios)) {
+    let sum = 0, allNum = true;
+    for (const s of w.scenarios) {
+      if (!s) { allNum = false; continue; }
+      if (typeof s.g === "number" && s.g !== 0 && Math.abs(s.g) < 1) {
+        notes.push((s.name || "scenario") + ": G = " + s.g + " read as " + asPct(s.g) + "%");
+        s.g = asPct(s.g);
+      }
+      if (typeof s.margin === "number" && s.margin !== 0 && Math.abs(s.margin) < 1) {
+        notes.push((s.name || "scenario") + ": margin = " + s.margin + " read as " + asPct(s.margin) + "%");
+        s.margin = asPct(s.margin);
+      }
+      const p = Number(s.prob);
+      if (isFinite(p)) sum += p; else allNum = false;
+    }
+    // Probabilities that sum to ~1 are fractions of the same mistake.
+    if (allNum && sum > 0.98 && sum < 1.02) {
+      for (const s of w.scenarios) s.prob = asPct(Number(s.prob));
+      notes.push("probabilities summed to 1; read as percentages");
+    }
+  }
+  return notes;
+}
 
 // Cheap structural checks. The schema does the heavy lifting; this catches
 // the two mistakes that would render a misleading dashboard rather than fail.
@@ -234,6 +274,7 @@ function dispatch(msg, origin) {
         return rpcError(id, -32602, "Unknown tool: " + name);
       }
       const worksheet = (params && params.arguments) || {};
+      const unitNotes = normalizeUnits(worksheet);
       const problems = validate(worksheet);
 
       if (problems.length) {
@@ -290,6 +331,7 @@ function dispatch(msg, origin) {
         "",
         "The interactive worksheet is on screen: drag the probabilities, change K, and edit any",
         "scenario's assumptions to see the expected value move.",
+        ...(unitNotes.length ? ["", "Unit note: " + unitNotes.join("; ") + "."] : []),
       ].join("\n");
 
       return rpcResult(id, {

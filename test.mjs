@@ -16,6 +16,7 @@
    ============================================================ */
 
 import { WIDGET_HTML } from "./widget.js";
+import { handleRequest } from "./server.js";
 
 /* ---------- a DOM small enough to boot the widget in ---------- */
 
@@ -151,6 +152,47 @@ const badWeights = bootWidget(WORKSHEET, {
   version: 1, worksheetKey: key(WORKSHEET), K: 9, weights: [1, 2],
 });
 check("ignores weights of the wrong length", badWeights.ev, bootWidget(WORKSHEET, { version: 1, worksheetKey: key(WORKSHEET), K: 9 }).ev);
+
+console.log("\nunit coercion");
+
+// The retry loop that painted two widgets: a fraction-style K was rejected,
+// the model retried, and both calls rendered. Fractions are now read as the
+// percentage points they meant, so the first call succeeds and there is
+// exactly one widget. The widget mirrors the server, because it renders the
+// model's raw arguments.
+const clone = () => JSON.parse(JSON.stringify(WORKSHEET));
+
+const fracK = clone(); fracK.K = 0.085;
+const fk = bootWidget(fracK, null);
+check("widget reads a toolInput K of 0.085 as 8.5%", fk.k, "8.5%");
+check("  and the valuation matches the clean run", fk.ev, clean.ev);
+
+const fracG = clone(); fracG.scenarios[3].g = 0.04; fracG.scenarios[4].g = 0.05;
+check("widget reads g = 0.04 as 4%", bootWidget(fracG, null).ev, clean.ev);
+
+const fracP = clone(); fracP.scenarios.forEach((x) => { x.prob = x.prob / 100; });
+check("widget reads probabilities summing to 1 as percentages", bootWidget(fracP, null).ev, clean.ev);
+
+const point5 = clone(); point5.K = 12;
+check("widget leaves a legitimate K of 12 alone", bootWidget(point5, null).k, "12%");
+
+const serverCall = async (args) => {
+  const res = await handleRequest(new Request("http://test/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "render_margin_of_safety_worksheet", arguments: args } }),
+  }));
+  return (await res.json()).result;
+};
+
+const sv = await serverCall(Object.assign(clone(), { K: 0.085 }));
+check("server accepts K = 0.085 by coercion", !!sv.isError, false);
+check("  notes the coercion in the output", sv.content[0].text.includes("read as 8.5%"), true);
+check("  and passes the coerced K to the widget", sv.structuredContent.worksheet.K, 8.5);
+
+const still = await serverCall(Object.assign(clone(), { K: 45 }));
+check("server still rejects a K that means nothing (45)", !!still.isError, true);
 
 console.log("\ndisplay honesty");
 

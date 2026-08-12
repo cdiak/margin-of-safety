@@ -13,21 +13,49 @@
 
 export const WIDGET_CSS = `
 :root{
-  --bg:#E9ECEE; --panel:#FFFFFF; --ink:#16232E; --sub:#5C6B76;
-  --rule:#C7CFD4; --track:#F2F4F5; --hilite:#F2D45C; --hilite-soft:#F4F1DF;
-  --market:#A33B2E; --good:#1C7A6B;
-  --s1:#8A93A0; --s2:#5E7A8C; --s3:#2E5E63; --s4:#1C7A6B; --s5:#C29130;
+  /* color-scheme must follow the same signal as the tokens below. The theme
+     comes from window.openai.theme, but a color-scheme of "light dark"
+     lets the OS choose the canvas and the form-control palette — so a viewer
+     with ChatGPT in light mode and the OS in dark mode gets dark ink painted
+     on a dark ground. Bound explicitly to data-theme further down. */
+  color-scheme: light;
+  /* No ground of its own. The widget sits inside ChatGPT's surface, so it
+     paints no background and inherits whatever the host is using. Every
+     colour below is either the host's text colour or a translucent overlay,
+     which keeps it legible on either theme without guessing at the exact
+     shade underneath. */
+  --ink:#1f2328; --sub:#6b7280;
+  --rule:rgba(0,0,0,.14); --rule-soft:rgba(0,0,0,.07);
+  --panel:transparent; --raise:rgba(0,0,0,.03); --track:rgba(0,0,0,.06);
+  --hilite:rgba(214,168,32,.20); --hilite-ink:#5c4708;
+  --market:#a3372a; --good:#1a6f5e;
+  --s1:#98a1ab; --s2:#5d7d90; --s3:#2f6a6a; --s4:#3f7d52; --s5:#b8862c;
 }
 :root[data-theme="dark"]{
-  --bg:#23282D; --panel:#272C31; --ink:#C8CCD0; --sub:#8B9197;
-  --rule:#3B4149; --track:#2C3237; --hilite:#45402A; --hilite-soft:#31302A;
-  --market:#E08070; --good:#7FBF8E;
-  --s1:#5A6167; --s2:#767D84; --s3:#9199A0; --s4:#ADB4BB; --s5:#D0D6DC;
+  color-scheme: dark;
+  --ink:#ececf1; --sub:#9aa3af;
+  --rule:rgba(255,255,255,.16); --rule-soft:rgba(255,255,255,.09);
+  --panel:transparent; --raise:rgba(255,255,255,.045); --track:rgba(255,255,255,.08);
+  --hilite:rgba(226,184,66,.22); --hilite-ink:#f0d691;
+  --market:#e78b7b; --good:#6fc39c;
+  --s1:#7d8794; --s2:#7fa3b8; --s3:#5fae9f; --s4:#79b98d; --s5:#d7a955;
 }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ink:#ececf1; --sub:#9aa3af;
+    --rule:rgba(255,255,255,.16); --rule-soft:rgba(255,255,255,.09);
+    --panel:transparent; --raise:rgba(255,255,255,.045); --track:rgba(255,255,255,.08);
+    --hilite:rgba(226,184,66,.22); --hilite-ink:#f0d691;
+    --market:#e78b7b; --good:#6fc39c;
+    --s1:#7d8794; --s2:#7fa3b8; --s3:#5fae9f; --s4:#79b98d; --s5:#d7a955;
+  }
+}
+:root[data-theme="light"]{ color-scheme: light; }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  background:var(--bg); color:var(--ink);
+  background:transparent; color:var(--ink);
   font-family:'Iowan Old Style','Palatino Linotype',Palatino,Charter,Georgia,serif;
   font-size:15px; line-height:1.5;
 }
@@ -40,12 +68,12 @@ body{
 .title{font-size:19px;font-weight:700;margin:0;text-wrap:balance}
 .status-line{font-size:12px;color:var(--sub)}
 
-.tape-card{border:1px solid var(--ink);padding:12px;margin-bottom:14px;background:var(--panel)}
+.tape-card{border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:14px;background:var(--raise)}
 .tape-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .tape-label{font-size:11px;letter-spacing:.08em;color:var(--sub)}
 .tape-ev{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;margin-left:8px;font-variant-numeric:tabular-nums}
 .tape-pct{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-weight:700}
-.tape-track{position:relative;height:32px;overflow:hidden;background:var(--track);border:1px solid var(--rule)}
+.tape-track{position:relative;height:32px;overflow:hidden;border-radius:6px;background:var(--track);border:1px solid var(--rule-soft)}
 .tape-fill{position:absolute;inset:0;display:flex}
 .tape-seg{height:100%;transition:width .3s}
 .tape-mark{position:absolute;top:0;bottom:0;width:2px;background:var(--market)}
@@ -57,18 +85,18 @@ body{
 
 .controls{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .presets{display:flex;gap:6px;flex-wrap:wrap}
-.btn{padding:5px 10px;font-size:12px;border:1px solid var(--ink);background:var(--panel);
-  color:var(--ink);cursor:pointer;font-family:inherit}
-.btn:hover{background:var(--hilite-soft)}
+.btn{padding:5px 10px;font-size:12px;border:1px solid var(--rule);border-radius:6px;
+  background:transparent;color:var(--ink);cursor:pointer;font-family:inherit}
+.btn:hover{background:var(--raise);border-color:var(--ink)}
 .btn:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
 .k-wrap{flex:1;min-width:170px;max-width:280px}
 
-.scen{border:1px solid var(--rule);border-left-width:4px;border-left-style:solid;
-  margin-bottom:10px;padding:11px;background:var(--panel)}
+.scen{border:1px solid var(--rule);border-left-width:3px;border-left-style:solid;
+  border-radius:8px;margin-bottom:10px;padding:11px;background:transparent}
 .scen-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .scen-name{font-weight:700;font-size:14px}
 .scen-rule{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:10.5px;
-  background:var(--hilite-soft);padding:2px 5px;margin-left:5px}
+  background:var(--raise);border-radius:4px;padding:2px 5px;margin-left:5px}
 .scen-calc{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12px;font-variant-numeric:tabular-nums}
 .scen-desc{font-size:12.5px;color:var(--sub);margin:4px 0 8px}
 .slider-row .lab{display:flex;justify-content:space-between;font-size:12px;color:var(--sub)}
@@ -77,35 +105,55 @@ input[type=range]{width:100%;height:4px;cursor:pointer;margin:4px 0 0}
 .link{font-size:12px;color:var(--sub);background:none;border:none;font-family:inherit;
   text-decoration:underline;cursor:pointer;padding:0;margin-top:6px}
 .math-box{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;
-  line-height:1.55;background:var(--hilite-soft);padding:7px 9px;margin-top:7px;overflow-x:auto}
+  line-height:1.55;background:var(--raise);border-radius:6px;padding:7px 9px;margin-top:7px;overflow-x:auto}
 .assump-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;padding-top:9px;
   border-top:1px dashed var(--rule)}
 .assump{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--sub)}
 .assump input{width:88px;padding:4px 6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
-  border:1px solid var(--rule);background:var(--panel);color:var(--ink)}
+  border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink)}
 
-.ledger{border:1px solid var(--rule);padding:12px;margin-top:12px;background:var(--panel)}
+.fin{border:1px solid var(--rule);border-radius:8px;padding:12px;margin-top:12px}
+.fin-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.fin-title{font-size:11px;letter-spacing:.08em;color:var(--sub)}
+.fin-unit{font-size:11px;color:var(--sub);font-family:ui-monospace,Menlo,monospace}
+.fin-stmt{margin-top:10px}
+.fin-stmt h4{font-size:12px;margin:0 0 4px;font-weight:700}
+.fin-scroll{overflow-x:auto}
+.fin table{width:100%;border-collapse:collapse;font-size:12px}
+.fin th{text-align:right;padding:3px 6px;font-size:11px;color:var(--sub);font-weight:400;
+  border-bottom:1px solid var(--rule);white-space:nowrap}
+.fin th:first-child{text-align:left}
+.fin td{padding:3px 6px;border-bottom:1px solid var(--rule-soft);text-align:right;
+  font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fin td:first-child{text-align:left;font-family:inherit}
+.fin tr.total td{font-weight:700;border-bottom:none}
+.fin .neg{color:var(--market)}
+.warn{border:1px solid var(--market);border-radius:8px;padding:9px 11px;margin-bottom:12px;
+  font-size:12.5px;color:var(--market)}
+.note{border:1px solid var(--rule);border-radius:8px;padding:8px 11px;margin-bottom:12px;
+  font-size:12px;color:var(--sub)}
+.ledger{border:1px solid var(--rule);border-radius:8px;padding:12px;margin-top:12px;background:transparent}
 .ledger-title{font-size:11px;letter-spacing:.08em;color:var(--sub);margin-bottom:7px}
 .ledger-eq{font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-bottom:6px;
   word-wrap:break-word;font-variant-numeric:tabular-nums}
 .ledger-sum{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--hilite);
-  color:#16232E;display:inline-block;padding:3px 7px;font-variant-numeric:tabular-nums}
+  color:var(--hilite-ink);border-radius:4px;display:inline-block;padding:3px 7px;font-variant-numeric:tabular-nums}
 .ledger-note{font-size:12.5px;color:var(--sub);margin:9px 0 0}
 
-.report{margin-top:14px;border-top:2px solid var(--ink);padding-top:14px}
+.report{margin-top:14px;border-top:1px solid var(--rule);padding-top:14px}
 .report h3{font-size:15px;margin:16px 0 5px}
 .report h4{font-size:13px;margin:11px 0 3px}
 .report p{font-size:13px;margin:5px 0}
 .report table{width:100%;border-collapse:collapse;font-size:12px;margin:7px 0}
-.report th{text-align:left;border-bottom:2px solid var(--ink);padding:4px 5px;font-size:11px}
-.report td{border-bottom:1px solid var(--rule);padding:5px;vertical-align:top}
+.report th{text-align:left;border-bottom:1px solid var(--ink);padding:4px 5px;font-size:11px}
+.report td{border-bottom:1px solid var(--rule-soft);padding:5px;vertical-align:top}
 .report td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .report .mathline{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;margin:2px 0 2px 10px;
   white-space:pre-wrap}
 .report .mathfinal{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:11.5px;
-  background:var(--hilite);color:#16232E;padding:2px 7px;display:inline-block;margin:3px 0 7px 10px}
-.report .evrow td{background:var(--hilite);color:#16232E;font-weight:700}
+  background:var(--hilite);color:var(--hilite-ink);border-radius:4px;padding:2px 7px;display:inline-block;margin:3px 0 7px 10px}
+.report .evrow td{background:var(--hilite);color:var(--hilite-ink);font-weight:700}
 .tbl-scroll{overflow-x:auto}
 .fine{font-size:11.5px;color:var(--sub)}
 .foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--sub)}
@@ -188,6 +236,37 @@ export function widgetMain() {
     return { vals: vals, probs: probs, contribs: contribs, EV: EV };
   }
 
+  /* ---------- unit coercion (mirror of the server's) ---------- */
+  function normalizeUnits(d) {
+    var notes = [];
+    var asPct = function (n) { return Math.round(n * 100 * 1000) / 1000; };
+    if (d && typeof d.K === "number" && d.K > 0 && d.K < 1) {
+      notes.push("K = " + d.K + " read as " + asPct(d.K) + "%");
+      d.K = asPct(d.K);
+    }
+    if (d && Array.isArray(d.scenarios)) {
+      var sum = 0, allNum = true;
+      d.scenarios.forEach(function (x) {
+        if (!x) { allNum = false; return; }
+        if (typeof x.g === "number" && x.g !== 0 && Math.abs(x.g) < 1) {
+          notes.push((x.name || "scenario") + ": G = " + x.g + " read as " + asPct(x.g) + "%");
+          x.g = asPct(x.g);
+        }
+        if (typeof x.margin === "number" && x.margin !== 0 && Math.abs(x.margin) < 1) {
+          notes.push((x.name || "scenario") + ": margin = " + x.margin + " read as " + asPct(x.margin) + "%");
+          x.margin = asPct(x.margin);
+        }
+        var p = Number(x.prob);
+        if (isFinite(p)) sum += p; else allNum = false;
+      });
+      if (allNum && sum > 0.98 && sum < 1.02) {
+        d.scenarios.forEach(function (x) { if (x) x.prob = asPct(Number(x.prob)); });
+        notes.push("probabilities summed to 1; read as percentages");
+      }
+    }
+    return notes;
+  }
+
   /* ---------- persistence ----------
      Persisted state is untrusted input and gets validated exactly as the
      server validates a worksheet. K is percentage points: a stored 0.085
@@ -250,6 +329,21 @@ export function widgetMain() {
 
     html += '<div class="wrap">';
 
+    // Say so when the model's own cost of capital could not be used. Silently
+    // substituting a default is how a valuation ends up resting on a number
+    // nobody chose and nobody can see.
+    if (state.unitNotes && state.unitNotes.length) {
+      html += '<div class="note">Unit note: ' + esc(state.unitNotes.join("; "))
+        + ". Rates are percentage points — 8.5 means 8.5%.</div>";
+    }
+
+    if (validK(d.K) === null) {
+      html += '<div class="warn">The model supplied K = ' + esc(d.K)
+        + '%, which is outside the 1-30% range this worksheet accepts'
+        + ' (rates are percentage points: 8.5 means 8.5%). Showing K = '
+        + esc(state.K) + '% instead — set it with the slider below.</div>';
+    }
+
     html += '<div class="head"><div>'
       + '<div class="eyebrow">NAV / EPV / GV · EXPECTED-VALUE METHOD</div>'
       + '<h1 class="title">' + esc(d.company) + " — what is it actually worth?</h1>"
@@ -283,6 +377,8 @@ export function widgetMain() {
       + '<div class="ledger-eq" id="ledger-eq"></div>'
       + '<div class="ledger-sum" id="ledger-sum"></div>'
       + '<p class="ledger-note">' + esc(d.impliedProbs) + "</p></div>";
+
+    html += financialsHTML();
 
     html += '<button class="btn" id="report-toggle" style="margin-top:12px">Show the full worksheet</button>';
     html += '<div id="report-host" hidden></div>';
@@ -459,6 +555,50 @@ export function widgetMain() {
     if (host && !host.hidden) host.innerHTML = reportHTML();
   }
 
+  /* ---------- the three statements ---------- */
+  function financialsHTML() {
+    var f = state.data.financials;
+    if (!f || !Array.isArray(f.periods) || !f.periods.length) return "";
+
+    // Accounting convention: parenthesised negatives, right-aligned, aligned
+    // decimals. Anyone who reads statements reads them this way.
+    var num = function (v) {
+      if (v == null || !isFinite(Number(v))) return "—";
+      var n = Number(v);
+      // One decimal throughout, so a balance-sheet total does not read as
+      // less precise than the cash line above it.
+      var body = Math.abs(n) >= 1000
+        ? Math.round(Math.abs(n)).toLocaleString()
+        : Math.abs(n).toFixed(1);
+      return n < 0 ? '<span class="neg">(' + body + ")</span>" : body;
+    };
+
+    var table = function (title, rows) {
+      if (!Array.isArray(rows) || !rows.length) return "";
+      var h = '<div class="fin-stmt"><h4>' + esc(title)
+        + '</h4><div class="fin-scroll"><table><tr><th></th>';
+      f.periods.forEach(function (p) { h += "<th>" + esc(p) + "</th>"; });
+      h += "</tr>";
+      rows.forEach(function (r, i) {
+        h += "<tr" + (i === rows.length - 1 ? ' class="total"' : "") + "><td>"
+          + esc(r.line) + "</td>";
+        for (var c = 0; c < f.periods.length; c++) {
+          h += "<td>" + num(r.values && r.values[c]) + "</td>";
+        }
+        h += "</tr>";
+      });
+      return h + "</table></div></div>";
+    };
+
+    return '<div class="fin"><div class="fin-head">'
+      + '<span class="fin-title">THE THREE STATEMENTS</span>'
+      + '<span class="fin-unit">' + esc(f.unit || "$B") + "</span></div>"
+      + table("Income statement", f.income)
+      + table("Balance sheet", f.balance)
+      + table("Cash flow", f.cashFlow)
+      + "</div>";
+  }
+
   function reportHTML() {
     var d = state.data;
     var r = computeAll();
@@ -538,6 +678,7 @@ export function widgetMain() {
   }
 
   function boot(data) {
+    var unitNotes = normalizeUnits(data);
     var restored = (window.openai && window.openai.widgetState) || null;
     // Reuse persisted knobs only when they belong to this worksheet and this
     // state shape. Anything else starts from the model's own numbers.
@@ -547,6 +688,7 @@ export function widgetMain() {
 
     state = {
       data: data,
+      unitNotes: unitNotes,
       K: (reusable && validK(restored.K)) || validK(data.K) || 11,
       weights: (reusable && validWeights(restored.weights, data.scenarios.length))
         || data.scenarios.map(function (s) { return Number(s.prob) || 20; }),

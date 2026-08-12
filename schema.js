@@ -22,7 +22,7 @@ export const WORKSHEET_SCHEMA = {
   additionalProperties: false,
   required: [
     "company", "status", "asOf", "headline", "mark", "K", "kRationale",
-    "sectionA", "sectionB", "sectionC", "roicTest", "scenarios",
+    "sectionA", "sectionB", "sectionC", "financials", "roicTest", "scenarios",
     "presets", "impliedProbs", "tradeSetup", "sources",
   ],
   properties: {
@@ -117,6 +117,42 @@ export const WORKSHEET_SCHEMA = {
       marketImplied: { type: "array", minItems: 5, maxItems: 5, items: { type: "number" }, description: "Weights that roughly reproduce the mark, or your closest attempt." },
     }, ["base", "bear", "marketImplied"]),
 
+    financials: row({
+      unit: str("Unit for every figure below, e.g. '$B' or '$M'. Use the same unit throughout."),
+      periods: {
+        type: "array", minItems: 2, maxItems: 4,
+        description: "Fiscal periods, oldest first, e.g. ['FY2024', 'FY2025', 'FY2026 TTM'].",
+        items: { type: "string" },
+      },
+      income: {
+        type: "array", minItems: 3, maxItems: 7,
+        description: "Income statement. Include at least Revenue, Operating income and Net income; add Gross profit and Operating expenses where known.",
+        items: row({
+          line: str("Line item name."),
+          values: { type: "array", minItems: 2, maxItems: 4, items: { type: "number" },
+            description: "One figure per period, in the same order as `periods`. Negative for outflows and losses." },
+        }, ["line", "values"]),
+      },
+      balance: {
+        type: "array", minItems: 3, maxItems: 7,
+        description: "Balance sheet. Include at least Cash and equivalents, Total assets, Total debt and Total equity.",
+        items: row({
+          line: str("Line item name."),
+          values: { type: "array", minItems: 2, maxItems: 4, items: { type: "number" },
+            description: "One figure per period, in the same order as `periods`." },
+        }, ["line", "values"]),
+      },
+      cashFlow: {
+        type: "array", minItems: 3, maxItems: 7,
+        description: "Cash flow statement. Include at least Operating cash flow, Capital expenditure (negative) and Free cash flow.",
+        items: row({
+          line: str("Line item name."),
+          values: { type: "array", minItems: 2, maxItems: 4, items: { type: "number" },
+            description: "One figure per period, in the same order as `periods`. Negative for outflows." },
+        }, ["line", "values"]),
+      },
+    }, ["unit", "periods", "income", "balance", "cashFlow"]),
+
     impliedProbs: str("Invert the market price: what probability distribution does the mark require, and is it reachable at all?"),
     tradeSetup: str("Crowding, counterparty, catalysts to watch, and honest bull and bear counterpoints."),
     sources: str("One paragraph listing the sources you relied on."),
@@ -130,7 +166,9 @@ export const TOOL_DESCRIPTION = [
   "",
   "Call this whenever the user asks what a company is worth, asks for an intrinsic value, a valuation, a DCF-style analysis, or a margin of safety on a specific company — public or private.",
   "",
-  "BEFORE CALLING: do the research yourself. Search the web for the company's latest revenue or run-rate, margins, burn or free cash flow, most recent funding round or market capitalization, competitive position, governance, and risks. Then value it across the five framework scenarios and compute the numbers you pass in. This tool performs no research and no analysis of its own — it only draws what you give it.",
+  "CALL THIS EXACTLY ONCE per company, when your research is finished and your numbers are final. Every call paints another worksheet in the conversation, so a second call leaves the user with two contradictory dashboards. Do not call it to explore variations — the user changes assumptions on the worksheet itself.",
+  "",
+  "BEFORE CALLING: do the research yourself. Search the web for the company's latest revenue or run-rate, margins, burn or free cash flow, most recent funding round or market capitalization, competitive position, governance, and risks. Pull the three statements — income statement, balance sheet and cash flow statement — for the last two to four reported periods, and pass them in `financials`; the worksheet shows them as the evidence base for the valuation. Then value it across the five framework scenarios and compute the numbers you pass in. This tool performs no research and no analysis of its own — it only draws what you give it.",
   "",
   "Be rigorous and skeptical; do not flatter the company. Every dollar figure is in $B (billions USD). Values are capitalized at the steady-state year, then discounted back to today at K, so scenario parameters must be internally consistent: the dashboard recomputes EPV as (fcf or rev x margin) / K / (1+K)^(year - current year) + addBack, and GV as d / (K - g) / (1+K)^(year - current year) + addBack.",
 ].join("\n");
