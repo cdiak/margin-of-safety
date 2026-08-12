@@ -1,0 +1,161 @@
+/* ============================================================
+   Regression tests.
+
+   Two unit errors have shipped from this codebase, both of the same
+   shape: a rate expressed as a fraction where the code expects
+   percentage points. K = 0.085 meaning 8.5% divides into 0.00085 and
+   values Microsoft at $42T. Neither error throws; both render as a
+   confident answer. So the tests below assert on numbers, not on
+   whether the code runs.
+
+   The widget is booted for real — serialised source, a minimal DOM,
+   a stubbed host — because the bug lived in state hydration, which no
+   amount of checking the source text would have caught.
+
+   Usage:  node test.mjs
+   ============================================================ */
+
+import { WIDGET_HTML } from "./widget.js";
+
+/* ---------- a DOM small enough to boot the widget in ---------- */
+
+function fakeDom() {
+  const make = (tag) => {
+    const el = {
+      tagName: tag, children: [], style: {}, dataset: {},
+      className: "", _text: "", _html: "", hidden: false, value: "",
+      appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
+      replaceWith() {},
+      addEventListener(type, fn) { (this._on ||= {})[type] = fn; },
+      removeEventListener() {},
+      setAttribute(k, v) { this[k] = v; },
+      getAttribute(k) { return this[k]; },
+      scrollIntoView() {},
+      get textContent() { return this._text; },
+      set textContent(v) { this._text = String(v); },
+      get innerHTML() { return this._html; },
+      set innerHTML(v) { this._html = String(v); },
+    };
+    return el;
+  };
+
+  const byId = new Map();
+  const doc = {
+    documentElement: make("html"),
+    createElement: make,
+    getElementById(id) {
+      if (!byId.has(id)) byId.set(id, make("div"));
+      return byId.get(id);
+    },
+    addEventListener() {},
+  };
+  return { doc, byId };
+}
+
+function bootWidget(worksheet, widgetState) {
+  const { doc, byId } = fakeDom();
+  const open = WIDGET_HTML.indexOf('<script type="module">');
+  const src = WIDGET_HTML.slice(
+    open + '<script type="module">'.length,
+    WIDGET_HTML.indexOf("</script>", open)
+  );
+
+  const win = {
+    openai: {
+      toolInput: worksheet,
+      widgetState,
+      theme: "dark",
+      setWidgetState(s) { win.__saved = s; },
+    },
+    addEventListener() {},
+    matchMedia: () => ({ matches: false }),
+    setInterval: () => 0,
+    clearInterval: () => {},
+  };
+
+  // The widget reads free `document` / `window`; hand it both.
+  new Function("window", "document", "setInterval", "clearInterval", src)(
+    win, doc, win.setInterval, win.clearInterval
+  );
+
+  const text = (id) => byId.get(id)?.textContent ?? "";
+  return { ev: text("ev-num"), k: text("k-val"), hdrK: text("hdr-k"), saved: win.__saved };
+}
+
+/* ---------- fixture ---------- */
+
+const sc = (o) => Object.assign({ name: "s", rule: "r", desc: "d" }, o);
+const WORKSHEET = {
+  company: "Testco", status: "public", asOf: "August 12, 2026", headline: "h",
+  mark: { value: 3680, label: "market cap", multiple: "30x" },
+  K: 8.5, kRationale: "mature, self-funding",
+  sectionA: [], sectionB: { rows: [], risks: "", governance: "" }, sectionC: [],
+  roicTest: { lines: [], verdict: "Case 3." },
+  scenarios: [
+    sc({ type: "nav", prob: 5, value: 250 }),
+    sc({ type: "epv", prob: 20, fcf: 70, year: 2027, addBack: 0 }),
+    sc({ type: "epv", prob: 40, fcf: 95, year: 2028, addBack: 0 }),
+    sc({ type: "gv", prob: 25, d: 120, g: 4, year: 2029, addBack: 0 }),
+    sc({ type: "gv", prob: 10, d: 180, g: 5, year: 2031, addBack: 0 }),
+  ],
+  presets: { base: [5, 20, 40, 25, 10], bear: [20, 40, 30, 10, 0], marketImplied: [0, 5, 25, 45, 25] },
+  impliedProbs: "ip", tradeSetup: "ts", sources: "s",
+};
+
+const key = (d) => [d.company, d.asOf, d.mark.value].join("|");
+
+/* ---------- tests ---------- */
+
+let failures = 0;
+const check = (name, actual, expected) => {
+  const ok = actual === expected;
+  if (!ok) failures++;
+  console.log((ok ? "  pass  " : "  FAIL  ") + name +
+    (ok ? "" : "\n          expected " + expected + ", got " + actual));
+};
+
+console.log("state hydration");
+
+const clean = bootWidget(WORKSHEET, null);
+check("uses the model's K when nothing is persisted", clean.k, "8.5%");
+
+// The shipped bug: a fraction persisted from an older call overrode a valid
+// input and produced a valuation an order of magnitude too large.
+const poisoned = bootWidget(WORKSHEET, {
+  version: 1, worksheetKey: key(WORKSHEET), K: 0.085, weights: [5, 20, 40, 25, 10],
+});
+check("rejects a persisted K of 0.085", poisoned.k, "8.5%");
+check("  and does not value it in the trillions", poisoned.ev, clean.ev);
+
+for (const bad of [0.11, 0, -5, 300, NaN, null, "eleven"]) {
+  const r = bootWidget(WORKSHEET, { version: 1, worksheetKey: key(WORKSHEET), K: bad });
+  check("rejects a persisted K of " + JSON.stringify(bad), r.k, "8.5%");
+}
+
+const valid = bootWidget(WORKSHEET, { version: 1, worksheetKey: key(WORKSHEET), K: 12 });
+check("keeps a persisted K of 12 for the same worksheet", valid.k, "12%");
+
+console.log("\nstate scoping");
+
+const otherCompany = bootWidget(WORKSHEET, {
+  version: 1, worksheetKey: "Othercorp|July 1, 2026|900", K: 14, weights: [50, 50, 0, 0, 0],
+});
+check("ignores state saved against another worksheet", otherCompany.k, "8.5%");
+
+const oldVersion = bootWidget(WORKSHEET, {
+  version: 0, worksheetKey: key(WORKSHEET), K: 14,
+});
+check("ignores state from an older state shape", oldVersion.k, "8.5%");
+
+const badWeights = bootWidget(WORKSHEET, {
+  version: 1, worksheetKey: key(WORKSHEET), K: 9, weights: [1, 2],
+});
+check("ignores weights of the wrong length", badWeights.ev, bootWidget(WORKSHEET, { version: 1, worksheetKey: key(WORKSHEET), K: 9 }).ev);
+
+console.log("\ndisplay honesty");
+
+check("the header reports the K actually in use", poisoned.hdrK, poisoned.k);
+check("persisted state carries its scope", clean.saved, undefined);
+
+console.log("\n" + (failures ? failures + " FAILURE(S)" : "all passed"));
+process.exit(failures ? 1 : 0);

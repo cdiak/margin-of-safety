@@ -20,7 +20,16 @@ const SERVER_VERSION = "1.0.0";
 // The URI doubles as ChatGPT's cache key for the rendered component, so it
 // carries a version: bump it whenever the widget changes shape, or hosts keep
 // serving the copy they cached.
-const WIDGET_URI = "ui://margin-of-safety/worksheet-v2.html";
+const WIDGET_URI = "ui://margin-of-safety/worksheet-v4.html";
+// ChatGPT stores the template URI when an app is installed and keeps asking
+// for that exact pointer; it does not follow a rename. Any install made before
+// a URI change would 404 with "Failed to fetch template", so old pointers stay
+// served as aliases of the current widget. Add to this list, never remove.
+const LEGACY_WIDGET_URIS = [
+  "ui://widget/margin-of-safety.html",
+  "ui://margin-of-safety/worksheet-v2.html",
+  "ui://margin-of-safety/worksheet-v3.html",
+];
 // Required exactly. An unrecognised type renders as "Error loading app".
 const WIDGET_MIME = "text/html;profile=mcp-app";
 const DEFAULT_PROTOCOL = "2025-06-18";
@@ -204,12 +213,14 @@ function dispatch(msg, origin) {
 
     case "resources/read": {
       const uri = params && params.uri;
-      if (uri !== WIDGET_URI) {
+      if (uri !== WIDGET_URI && !LEGACY_WIDGET_URIS.includes(uri)) {
         return rpcError(id, -32602, "Unknown resource: " + uri);
       }
       return rpcResult(id, {
         contents: [{
-          uri: WIDGET_URI,
+          // Echo the URI that was asked for: the caller matches the response
+          // against its own pointer.
+          uri,
           mimeType: WIDGET_MIME,
           text: WIDGET_HTML,
           _meta: widgetResource(origin)._meta,
@@ -236,15 +247,50 @@ function dispatch(msg, origin) {
         });
       }
 
-      const { ev } = expectedValue(worksheet);
+      const { ev, vals } = expectedValue(worksheet);
       const pct = Math.round((ev / worksheet.mark.value) * 100);
-      const summary =
-        worksheet.company + ": expected value " + fmtB(ev) + " against a mark of "
-        + fmtB(worksheet.mark.value) + " (" + pct + "% of the mark, a "
-        + (ev >= worksheet.mark.value ? "premium" : "discount") + " of "
-        + fmtB(Math.abs(worksheet.mark.value - ev))
-        + "). The worksheet is on screen; the user can drag the probabilities, "
-        + "change K, and edit each scenario's assumptions.";
+      const total = worksheet.scenarios.reduce((a, x) => a + (Number(x.prob) || 0), 0) || 1;
+
+      // The full model goes into the transcript, not just a headline. A
+      // valuation the reader cannot audit is worse than no valuation: when a
+      // unit error puts a company at $50T, the only way to catch it is to see
+      // the inputs, the rule applied, and the arithmetic side by side.
+      const inputsOf = (x) => {
+        const at = " @" + x.year + (x.addBack ? ", " + (x.addBack >= 0 ? "+" : "") + x.addBack + "B interim" : "");
+        if (x.type === "nav") return "NAV " + x.value + "B";
+        if (x.type === "epv") {
+          return (x.fcf != null ? "FCF " + x.fcf + "B" : x.rev + "B x " + x.margin + "%") + " / K" + at;
+        }
+        return "D " + x.d + "B / (K-" + x.g + "%)" + at;
+      };
+
+      const rows = worksheet.scenarios.map((x, i) => {
+        const p = (Number(x.prob) || 0) / total;
+        return "| " + (i + 1) + " | " + x.name + " | " + x.rule + " | " + inputsOf(x)
+          + " | " + fmtB(vals[i]) + " | " + Math.round(p * 100) + "% | " + fmtB(p * vals[i]) + " |";
+      });
+
+      const summary = [
+        worksheet.company + " (" + worksheet.status + ", as of " + worksheet.asOf + ")",
+        "",
+        "**Expected value " + fmtB(ev) + " against a mark of " + fmtB(worksheet.mark.value)
+          + "** — " + pct + "% of the mark, a "
+          + (ev >= worksheet.mark.value ? "premium" : "discount") + " of "
+          + fmtB(Math.abs(worksheet.mark.value - ev)) + ".",
+        "",
+        "K = " + worksheet.K + "% (" + worksheet.kRationale + "). Values are capitalised at the",
+        "steady-state year then discounted to today at K. All figures in $B unless marked T.",
+        "",
+        "| # | Scenario | Rule | Inputs | Value today | Prob | Contribution |",
+        "|---|---|---|---|---|---|---|",
+        ...rows,
+        "| | **Expected value** | Sum of p x V | | | 100% | **" + fmtB(ev) + "** |",
+        "",
+        "Incremental ROIC: " + worksheet.roicTest.verdict,
+        "",
+        "The interactive worksheet is on screen: drag the probabilities, change K, and edit any",
+        "scenario's assumptions to see the expected value move.",
+      ].join("\n");
 
       return rpcResult(id, {
         content: [{ type: "text", text: summary }],

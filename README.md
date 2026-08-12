@@ -37,6 +37,7 @@ margin-of-safety/
 ├── widget.js         # the dashboard: CSS, the widget function, and the HTML resource
 ├── server.js         # MCP over streamable HTTP; portable fetch handler
 ├── node-server.mjs   # Node adapter, for local testing
+├── check.mjs         # pre-deploy guard: catches bundler-injected helpers
 └── README.md
 ```
 
@@ -123,6 +124,24 @@ open it in a browser:
 <script>window.openai = { toolInput: /* a worksheet object */, theme: "dark" };</script>
 <!-- then the widget HTML -->
 ```
+
+## Always check the deployed bundle, never the local build
+
+```bash
+node check.mjs                                    # the local build
+node check.mjs https://your-host                  # what a deployment serves
+```
+
+Run the second one after every deploy. The widget is produced by serialising a function with
+`Function.prototype.toString()`, which is only safe while that function references nothing outside
+its own body — and a bundler can quietly break that rule. esbuild's `keepNames`, on by default in
+wrangler, rewrites every inner function as `__name(fn, "fn")` and defines `__name` at module scope.
+The serialised copy keeps the calls and loses the helper, so the widget dies on load with
+`ReferenceError: __name is not defined`.
+
+Node does not bundle, so the local build renders fine and the deployed one does not. `check.mjs`
+compares the identifiers the emitted script uses against the ones it defines, and `WIDGET_HTML`
+ships shims for the helpers so the output no longer depends on how it was built.
 
 ## Two requirements that are easy to get wrong
 

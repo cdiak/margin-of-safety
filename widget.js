@@ -188,11 +188,47 @@ export function widgetMain() {
     return { vals: vals, probs: probs, contribs: contribs, EV: EV };
   }
 
-  /* ---------- persistence ---------- */
+  /* ---------- persistence ----------
+     Persisted state is untrusted input and gets validated exactly as the
+     server validates a worksheet. K is percentage points: a stored 0.085
+     meaning 8.5% would be read as 0.085%, divided into 0.00085, and return a
+     valuation in the tens of trillions — a number wrong by three orders of
+     magnitude that still renders as a confident answer.
+
+     It is also scoped to one worksheet. Without that, the probabilities and
+     cost of capital you set while looking at one company silently become the
+     starting assumptions for the next one. */
+  var STATE_VERSION = 1;
+
+  function worksheetKey(d) {
+    return [d.company, d.asOf, d.mark && d.mark.value].join("|");
+  }
+
+  function validK(v) {
+    var n = Number(v);
+    return isFinite(n) && n >= 1 && n <= 30 ? n : null;
+  }
+
+  function validWeights(w, count) {
+    if (!Array.isArray(w) || w.length !== count) return null;
+    var out = [];
+    for (var i = 0; i < w.length; i++) {
+      var n = Number(w[i]);
+      if (!isFinite(n) || n < 0 || n > 100) return null;
+      out.push(n);
+    }
+    return out;
+  }
+
   function persist() {
     try {
       if (window.openai && typeof window.openai.setWidgetState === "function") {
-        window.openai.setWidgetState({ K: state.K, weights: state.weights });
+        window.openai.setWidgetState({
+          version: STATE_VERSION,
+          worksheetKey: worksheetKey(state.data),
+          K: state.K,
+          weights: state.weights,
+        });
       }
     } catch (e) { /* widget state is a nicety, never fatal */ }
   }
@@ -217,8 +253,11 @@ export function widgetMain() {
     html += '<div class="head"><div>'
       + '<div class="eyebrow">NAV / EPV / GV · EXPECTED-VALUE METHOD</div>'
       + '<h1 class="title">' + esc(d.company) + " — what is it actually worth?</h1>"
+      // K is bound to the live value, never to the input. A header that
+      // reports the model's K while the engine runs a different one is how a
+      // three-orders-of-magnitude error reads as a considered answer.
       + '<div class="status-line">' + esc(d.status) + " · as of " + esc(d.asOf)
-      + " · K = " + esc(d.K) + "%</div>"
+      + ' · K = <span id="hdr-k"></span></div>'
       + "</div></div>";
 
     html += '<div class="tape-card">'
@@ -384,6 +423,8 @@ export function widgetMain() {
     pctEl.textContent = Math.round((r.EV / d.mark.value) * 100) + "%";
     pctEl.style.color = r.EV >= d.mark.value ? "var(--good)" : "var(--market)";
     document.getElementById("k-val").textContent = state.K + "%";
+    var hdrK = document.getElementById("hdr-k");
+    if (hdrK) hdrK.textContent = state.K + "%";
 
     document.getElementById("tape-fill").innerHTML = r.contribs.map(function (c, i) {
       return '<div class="tape-seg" style="width:' + Math.max(0, (c / scale) * 100)
@@ -498,12 +539,17 @@ export function widgetMain() {
 
   function boot(data) {
     var restored = (window.openai && window.openai.widgetState) || null;
+    // Reuse persisted knobs only when they belong to this worksheet and this
+    // state shape. Anything else starts from the model's own numbers.
+    var reusable = !!restored
+      && restored.version === STATE_VERSION
+      && restored.worksheetKey === worksheetKey(data);
+
     state = {
       data: data,
-      K: (restored && Number(restored.K)) || Number(data.K) || 11,
-      weights: (restored && restored.weights && restored.weights.length === data.scenarios.length)
-        ? restored.weights.slice()
-        : data.scenarios.map(function (s) { return Number(s.prob) || 20; }),
+      K: (reusable && validK(restored.K)) || validK(data.K) || 11,
+      weights: (reusable && validWeights(restored.weights, data.scenarios.length))
+        || data.scenarios.map(function (s) { return Number(s.prob) || 20; }),
     };
     applyTheme();
     render();
@@ -550,6 +596,18 @@ export const WIDGET_HTML =
   "<style>" + WIDGET_CSS + "</style>" +
   '<div id="mos-root"></div>' +
   '<script type="module">\n' +
+  // Bundlers rewrite the function before it is serialised. esbuild with
+  // `keepNames` (wrangler's default) turns every inner function into
+  // `__name(fn, "fn")` and defines `__name` at module scope — which
+  // toString() does not carry across, so the widget dies on load with
+  // `ReferenceError: __name is not defined`. Shipping the helpers inside the
+  // emitted script makes the widget independent of how it was built. Add a
+  // shim here if a new helper ever shows up in check.mjs.
+  "const __defProp = Object.defineProperty;\n" +
+  "const __name = function (target, value) {\n" +
+  "  try { __defProp(target, 'name', { value: value, configurable: true }); } catch (e) {}\n" +
+  "  return target;\n" +
+  "};\n" +
   "const __show = function (label, detail) {\n" +
   "  const el = document.getElementById('mos-root');\n" +
   "  if (!el) return;\n" +
