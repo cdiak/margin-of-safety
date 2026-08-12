@@ -227,6 +227,116 @@ const fmtB = (v) => {
   return sign + "$" + a.toFixed(2) + "B";
 };
 
+/* ---------- the workbook script ----------
+   ChatGPT's code tool has openpyxl preinstalled. Every tool response carries
+   a complete script — worksheet data embedded, nothing for the model to fill
+   in — so producing the Excel file is an execution step, not a judgment
+   call. The Valuation sheet is a live model: K and the weights are editable
+   cells, scenario values are formulas against them, mirroring the widget. */
+
+function toB64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+function workbookScript(worksheet) {
+  const baseYear = new Date().getFullYear();
+  const payload = toB64(JSON.stringify(worksheet));
+  return [
+    "import json, base64, re",
+    "from openpyxl import Workbook",
+    "from openpyxl.styles import Font",
+    "",
+    'W = json.loads(base64.b64decode("' + payload + '").decode("utf-8"))',
+    "BASE_YEAR = " + baseYear,
+    "",
+    "wb = Workbook()",
+    'va = wb.active; va.title = "Valuation"',
+    'bold = Font(bold=True)',
+    'va["A1"] = "Margin of Safety — " + W["company"]; va["A1"].font = Font(bold=True, size=14)',
+    'va["A2"] = W["status"] + " · as of " + W["asOf"]',
+    'va["A4"] = "K — cost of capital (%)  [EDIT ME]"; va["B4"] = float(W["K"]); va["B4"].font = bold',
+    'va["A5"] = "Mark ($B)"; va["B5"] = float(W["mark"]["value"]); va["C5"] = W["mark"]["label"]',
+    "",
+    'hdr = ["#", "Scenario", "Rule", "Type", "Weight %  [EDIT ME]", "Inputs", "Value today ($B)", "Contribution ($B)"]',
+    "for c, h in enumerate(hdr, 1):",
+    "    cell = va.cell(row=7, column=c, value=h); cell.font = bold",
+    "",
+    "first, last = 8, 7 + len(W[\"scenarios\"])",
+    'for r, sc in enumerate(W["scenarios"], first):',
+    "    years = max(0, int(sc.get(\"year\", BASE_YEAR)) - BASE_YEAR)",
+    "    add = float(sc.get(\"addBack\", 0) or 0)",
+    '    k = "($B$4/100)"',
+    '    disc = "POWER(1+" + k + "," + str(years) + ")"',
+    '    if sc["type"] == "nav":',
+    '        formula = "=" + str(float(sc.get("value", 0) or 0))',
+    '        inputs = "NAV " + str(sc.get("value")) + "B"',
+    '    elif sc["type"] == "epv":',
+    '        F = str(float(sc["fcf"])) if sc.get("fcf") is not None else "(" + str(float(sc.get("rev", 0) or 0)) + "*" + str(float(sc.get("margin", 0) or 0)) + "/100)"',
+    '        formula = "=(" + F + "/" + k + ")/" + disc + "+" + str(add)',
+    '        inputs = ("FCF " + str(sc.get("fcf")) + "B" if sc.get("fcf") is not None else str(sc.get("rev")) + "B x " + str(sc.get("margin")) + "%") + " @" + str(sc.get("year"))',
+    "    else:",
+    '        g = str(float(sc.get("g", 0) or 0))',
+    '        formula = "=(" + str(float(sc.get("d", 0) or 0)) + "/(" + k + "-MIN(" + g + "/100," + k + "-0.005)))/" + disc + "+" + str(add)',
+    '        inputs = "D " + str(sc.get("d")) + "B, G " + str(sc.get("g")) + "% @" + str(sc.get("year"))',
+    "    va.cell(row=r, column=1, value=r - first + 1)",
+    '    va.cell(row=r, column=2, value=sc["name"])',
+    '    va.cell(row=r, column=3, value=sc.get("rule", ""))',
+    '    va.cell(row=r, column=4, value=sc["type"])',
+    '    va.cell(row=r, column=5, value=float(sc.get("prob", 0) or 0))',
+    "    va.cell(row=r, column=6, value=inputs)",
+    "    va.cell(row=r, column=7, value=formula)",
+    '    va.cell(row=r, column=8, value="=G" + str(r) + "*E" + str(r) + "/SUM($E$" + str(first) + ":$E$" + str(last) + ")")',
+    "",
+    "ev_row = last + 1",
+    'va.cell(row=ev_row, column=2, value="EXPECTED VALUE").font = bold',
+    'va.cell(row=ev_row, column=8, value="=SUM(H" + str(first) + ":H" + str(last) + ")").font = bold',
+    'va.cell(row=ev_row + 1, column=2, value="E(V) as % of mark")',
+    'va.cell(row=ev_row + 1, column=8, value="=H" + str(ev_row) + "/B5")',
+    'va.cell(row=ev_row + 3, column=1, value="Edit B4 (K) or column E (weights): every value recomputes, as on the worksheet.")',
+    'va.cell(row=ev_row + 4, column=1, value="Model-generated estimates from public reporting. Not investment advice.")',
+    "for col, w in zip(\"ABCDEFGH\", (4, 28, 34, 6, 12, 30, 18, 18)):",
+    "    va.column_dimensions[col].width = w",
+    "",
+    "def statements(ws, block, periods, unit, start=1):",
+    "    r = start",
+    '    for title, key in (("Income statement", "income"), ("Balance sheet", "balance"), ("Cash flow", "cashFlow")):',
+    "        lines = block.get(key) or []",
+    "        if not lines: continue",
+    '        ws.cell(row=r, column=1, value=title + " (" + unit + ")").font = bold',
+    "        for c, plabel in enumerate(periods, 2):",
+    "            ws.cell(row=r, column=c, value=plabel).font = bold",
+    "        r += 1",
+    "        for line in lines:",
+    '            ws.cell(row=r, column=1, value=line["line"])',
+    '            for c, v in enumerate(line.get("values") or [], 2):',
+    "                if isinstance(v, (int, float)): ws.cell(row=r, column=c, value=v)",
+    "            r += 1",
+    "        r += 1",
+    '    ws.column_dimensions["A"].width = 30',
+    "    return r",
+    "",
+    'f = W.get("financials") or {}',
+    'hist = wb.create_sheet("Historical")',
+    'if f.get("periods"): statements(hist, f, f["periods"], f.get("unit", "$B"))',
+    'else: hist["A1"] = "Historicals were not supplied on this run."',
+    'fc = f.get("forecast") or {}',
+    'fore = wb.create_sheet("Forecast")',
+    'if fc.get("periods"):',
+    '    fore["A1"] = "Basis: " + fc.get("basis", "not stated")',
+    '    statements(fore, fc, fc["periods"], f.get("unit", "$B"), start=3)',
+    'else: fore["A1"] = "A forecast was not supplied on this run."',
+    "",
+    'path = "/mnt/data/" + re.sub(r"\\W+", "_", W["company"]) + "_margin_of_safety.xlsx"',
+    "wb.save(path)",
+    "print(path)",
+  ].join("\n");
+}
+
 /* ---------- JSON-RPC dispatch ---------- */
 
 function dispatch(msg, origin) {
@@ -366,9 +476,19 @@ function dispatch(msg, origin) {
           + "sheet, cash flow to the steady-state year, with its basis) as markdown "
           + "tables in your text reply."] : []),
         "",
-        "If the user wants an Excel workbook, either point them at the worksheet's "
-          + "'Download workbook (.xlsx)' button, or build the .xlsx yourself with your "
-          + "file tools from structuredContent.worksheet — never by re-calling this tool.",
+        "DELIVER THE WORKBOOK NOW. Run the Python below with your code tool exactly "
+          + "as written — the worksheet data is embedded, nothing to fill in — and "
+          + "attach the resulting .xlsx file to your reply (the script prints its "
+          + "path). In the workbook, K and the scenario weights are editable cells "
+          + "and every value is a formula, so it recalculates in Excel just like the "
+          + "on-screen worksheet. Do not re-call this tool, do not retype the "
+          + "numbers, do not edit the script. If code execution is unavailable in "
+          + "this conversation, say so and point at the worksheet's 'Download "
+          + "workbook (.xlsx)' button instead.",
+        "",
+        "```python",
+        workbookScript(worksheet),
+        "```",
       ].join("\n");
 
       return rpcResult(id, {

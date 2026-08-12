@@ -309,6 +309,29 @@ print("xlsx-ok")
     /Forecast not supplied on this run/.test(bootWidget(noFc, null).rootHtml), true);
 }
 
+console.log("\nthe workbook script");
+
+// Every response must carry the run-and-attach script: unconditional
+// instruction, a python block, and the worksheet embedded verbatim so the
+// numbers cannot drift between the widget and the file.
+{
+  const sv = await serverCall(clone());
+  const text = sv.content[0].text;
+  check("instruction is unconditional", /DELIVER THE WORKBOOK NOW/.test(text), true);
+  check("a python block is attached", /```python\n[\s\S]*```/.test(text), true);
+  const b64 = text.match(/base64\.b64decode\("([^"]+)"\)/);
+  check("the worksheet rides inside it", !!b64, true);
+  if (b64) {
+    const embedded = JSON.parse(Buffer.from(b64[1], "base64").toString("utf8"));
+    check("  and matches the validated call", embedded.company, WORKSHEET.company);
+    check("  including the coerced K", (await (async () => {
+      const frac = await serverCall(Object.assign(clone(), { K: 0.085 }));
+      const fm = frac.content[0].text.match(/base64\.b64decode\("([^"]+)"\)/);
+      return JSON.parse(Buffer.from(fm[1], "base64").toString("utf8")).K;
+    })()), 8.5);
+  }
+}
+
 console.log("\ndata source priority");
 
 // The widget must render the server-validated worksheet when the host
