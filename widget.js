@@ -398,8 +398,12 @@ export function widgetMain() {
 
     html += financialsHTML();
 
-    html += '<button class="btn" id="report-toggle" style="margin-top:12px">Show the full worksheet</button>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'
+      + '<button class="btn" id="report-toggle">Show the full worksheet</button>'
+      + '<button class="btn" id="wb-btn">Download workbook (.xlsx)</button>'
+      + "</div>";
     html += '<div id="report-host" hidden></div>';
+    // handler attached after mount, alongside the report toggle
 
     html += '<div class="foot">Model-generated estimates from public reporting. '
       + "Verify against primary sources. Not investment advice.</div>";
@@ -495,6 +499,9 @@ export function widgetMain() {
         lab.appendChild(span); lab.appendChild(inp); ar.appendChild(lab);
       });
     });
+
+    document.getElementById("wb-btn").addEventListener("click", downloadWorkbook);
+    if (window.__exposeForTests) window.__mosBuildWorkbook = buildWorkbook;
 
     /* report toggle */
     document.getElementById("report-toggle").addEventListener("click", function () {
@@ -605,24 +612,22 @@ export function widgetMain() {
     var num = function (v) {
       if (v == null || !isFinite(Number(v))) return "—";
       var n = Number(v);
-      // One decimal throughout, so a balance-sheet total does not read as
-      // less precise than the cash line above it.
       var body = Math.abs(n) >= 1000
         ? Math.round(Math.abs(n)).toLocaleString()
         : Math.abs(n).toFixed(1);
       return n < 0 ? '<span class="neg">(' + body + ")</span>" : body;
     };
 
-    var table = function (title, rows) {
+    var table = function (title, rows, periods) {
       if (!Array.isArray(rows) || !rows.length) return "";
       var h = '<div class="fin-stmt"><h4>' + esc(title)
         + '</h4><div class="fin-scroll"><table><tr><th></th>';
-      f.periods.forEach(function (p) { h += "<th>" + esc(p) + "</th>"; });
+      periods.forEach(function (p) { h += "<th>" + esc(p) + "</th>"; });
       h += "</tr>";
       rows.forEach(function (r, i) {
         h += "<tr" + (i === rows.length - 1 ? ' class="total"' : "") + "><td>"
           + esc(r.line) + "</td>";
-        for (var c = 0; c < f.periods.length; c++) {
+        for (var c = 0; c < periods.length; c++) {
           h += "<td>" + num(r.values && r.values[c]) + "</td>";
         }
         h += "</tr>";
@@ -630,12 +635,230 @@ export function widgetMain() {
       return h + "</table></div></div>";
     };
 
-    return '<div class="sect fin"><div class="sect-label">THE THREE STATEMENTS'
+    var h = '<div class="sect fin"><div class="sect-label">THE THREE STATEMENTS'
       + '<span class="fin-unit">' + esc(f.unit || "$B") + "</span></div>"
-      + table("Income statement", f.income)
-      + table("Balance sheet", f.balance)
-      + table("Cash flow", f.cashFlow)
-      + "</div>";
+      + table("Income statement", f.income, f.periods)
+      + table("Balance sheet", f.balance, f.periods)
+      + table("Cash flow", f.cashFlow, f.periods);
+
+    var fc = f.forecast;
+    if (fc && Array.isArray(fc.periods) && fc.periods.length) {
+      h += '<div class="sect-label" style="margin-top:14px">FORECAST — GROUNDED IN THE SCENARIO ANALYSIS</div>'
+        + table("Income statement", fc.income, fc.periods)
+        + table("Balance sheet", fc.balance, fc.periods)
+        + table("Cash flow", fc.cashFlow, fc.periods)
+        + (fc.basis ? '<p class="ledger-note">Basis: ' + esc(fc.basis) + "</p>" : "");
+    } else {
+      h += '<p class="ledger-note" style="margin-top:10px">Forecast not supplied on this '
+        + "run — the model passed historicals only. Its text reply should carry the "
+        + "forward model; ask for it there if it does not.</p>";
+    }
+    return h + "</div>";
+  }
+
+  /* ---------- the workbook ----------
+     An .xlsx is a zip of XML parts. The widget can build a genuine one in
+     plain JavaScript — store-only zip, inline-string cells — because the
+     sandbox allows no libraries and no network. Sheets: Valuation (the live
+     scenario table at the knobs as currently set), Historical, Forecast. */
+
+  function crc32(bytes) {
+    var table = crc32.t;
+    if (!table) {
+      table = crc32.t = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c >>> 0;
+      }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipStore(entries) {
+    var enc = new TextEncoder();
+    var chunks = [], central = [], offset = 0;
+    var u16 = function (v) { return [v & 255, (v >> 8) & 255]; };
+    var u32 = function (v) { return [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255]; };
+    entries.forEach(function (e) {
+      var name = enc.encode(e.name);
+      var data = typeof e.data === "string" ? enc.encode(e.data) : e.data;
+      var crc = crc32(data);
+      var head = [].concat(
+        u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0x21),
+        u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+      chunks.push(new Uint8Array(head), name, data);
+      central.push({ name: name, crc: crc, size: data.length, offset: offset });
+      offset += head.length + name.length + data.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    central.forEach(function (e) {
+      var rec = [].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0x21),
+        u32(e.crc), u32(e.size), u32(e.size), u16(e.name.length),
+        u16(0), u16(0), u16(0), u16(0), u32(0), u32(e.offset));
+      chunks.push(new Uint8Array(rec), e.name);
+      cdSize += rec.length + e.name.length;
+    });
+    chunks.push(new Uint8Array([].concat(
+      u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length),
+      u32(cdSize), u32(cdStart), u16(0))));
+    var total = 0;
+    chunks.forEach(function (c) { total += c.length; });
+    var out = new Uint8Array(total), pos = 0;
+    chunks.forEach(function (c) { out.set(c, pos); pos += c.length; });
+    return out;
+  }
+
+  function xmlEsc(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function colName(i) {
+    var n = "";
+    i += 1;
+    while (i > 0) { var r = (i - 1) % 26; n = String.fromCharCode(65 + r) + n; i = ((i - 1 - r) / 26) | 0; }
+    return n;
+  }
+
+  // rows: arrays of cells; numbers become numeric cells, everything else text.
+  function sheetXML(rows) {
+    var body = rows.map(function (row, ri) {
+      var cells = row.map(function (v, ci) {
+        if (v == null || v === "") return "";
+        var ref = colName(ci) + (ri + 1);
+        if (typeof v === "number" && isFinite(v)) {
+          return '<c r="' + ref + '"><v>' + v + "</v></c>";
+        }
+        return '<c r="' + ref + '" t="inlineStr"><is><t>' + xmlEsc(v) + "</t></is></c>";
+      }).join("");
+      return '<row r="' + (ri + 1) + '">' + cells + "</row>";
+    }).join("");
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + "<sheetData>" + body + "</sheetData></worksheet>";
+  }
+
+  function statementRows(unit, block, periods) {
+    var rows = [];
+    var push = function (title, lines) {
+      if (!Array.isArray(lines) || !lines.length) return;
+      rows.push([title + " (" + (unit || "$B") + ")"].concat(periods));
+      lines.forEach(function (r) {
+        rows.push([r.line].concat(periods.map(function (_, c) {
+          var v = r.values && r.values[c];
+          return typeof v === "number" && isFinite(v) ? v : "";
+        })));
+      });
+      rows.push([]);
+    };
+    push("Income statement", block.income);
+    push("Balance sheet", block.balance);
+    push("Cash flow", block.cashFlow);
+    return rows;
+  }
+
+  function buildWorkbook() {
+    var d = state.data;
+    var r = computeAll();
+    var val = [
+      ["Margin of Safety — " + d.company],
+      [d.status + " · as of " + d.asOf],
+      [],
+      ["K — cost of capital (%)", state.K],
+      ["Mark ($B)", Number(d.mark.value), d.mark.label],
+      [],
+      ["#", "Scenario", "Rule", "Type", "Weight %", "Value today ($B)", "Contribution ($B)"],
+    ];
+    d.scenarios.forEach(function (sc, i) {
+      val.push([i + 1, sc.name, sc.rule, sc.type,
+        Math.round(r.probs[i] * 1000) / 10,
+        Math.round(r.vals[i] * 100) / 100,
+        Math.round(r.contribs[i] * 100) / 100]);
+    });
+    val.push(["", "Expected value", "Sum of p x V", "", 100, "",
+      Math.round(r.EV * 100) / 100]);
+    val.push([]);
+    val.push(["E(V) as % of mark", Math.round((r.EV / d.mark.value) * 100)]);
+    val.push([]);
+    val.push(["Model-generated estimates from public reporting. Not investment advice."]);
+
+    var f = d.financials || {};
+    var hist = f.periods ? statementRows(f.unit, f, f.periods)
+      : [["Historicals were not supplied on this run."]];
+    var fc = f.forecast;
+    var fore = (fc && fc.periods)
+      ? [["Basis: " + (fc.basis || "not stated")], []].concat(statementRows(f.unit, fc, fc.periods))
+      : [["A forecast was not supplied on this run."]];
+
+    var sheets = [
+      { name: "Valuation", rows: val },
+      { name: "Historical", rows: hist },
+      { name: "Forecast", rows: fore },
+    ];
+
+    var CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + sheets.map(function (_, i) {
+          return '<Override PartName="/xl/worksheets/sheet' + (i + 1)
+            + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+        }).join("")
+      + "</Types>";
+    var relsRoot = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      + "</Relationships>";
+    var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+      + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+      + sheets.map(function (sh, i) {
+          return '<sheet name="' + xmlEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+        }).join("")
+      + "</sheets></workbook>";
+    var wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + sheets.map(function (_, i) {
+          return '<Relationship Id="rId' + (i + 1)
+            + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            + 'Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+        }).join("")
+      + "</Relationships>";
+
+    var entries = [
+      { name: "[Content_Types].xml", data: CT },
+      { name: "_rels/.rels", data: relsRoot },
+      { name: "xl/workbook.xml", data: wb },
+      { name: "xl/_rels/workbook.xml.rels", data: wbRels },
+    ];
+    sheets.forEach(function (sh, i) {
+      entries.push({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: sheetXML(sh.rows) });
+    });
+    return zipStore(entries);
+  }
+
+  function downloadWorkbook() {
+    var btn = document.getElementById("wb-btn");
+    try {
+      var bytes = buildWorkbook();
+      var blob = new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = state.data.company.replace(/\W+/g, "_") + "_margin_of_safety.xlsx";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+    } catch (e) {
+      // Sandboxes differ on whether a frame may start a download. Fail with
+      // a route forward, not a dead button.
+      if (btn) btn.textContent = "Download blocked here — ask ChatGPT for the workbook";
+    }
   }
 
   function reportHTML() {

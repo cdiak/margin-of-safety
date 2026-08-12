@@ -20,7 +20,7 @@ const SERVER_VERSION = "1.0.0";
 // The URI doubles as ChatGPT's cache key for the rendered component, so it
 // carries a version: bump it whenever the widget changes shape, or hosts keep
 // serving the copy they cached.
-const WIDGET_URI = "ui://margin-of-safety/worksheet-v8.html";
+const WIDGET_URI = "ui://margin-of-safety/worksheet-v9.html";
 // ChatGPT stores the template URI when an app is installed and keeps asking
 // for that exact pointer; it does not follow a rename. Any install made before
 // a URI change would 404 with "Failed to fetch template", so old pointers stay
@@ -33,6 +33,7 @@ const LEGACY_WIDGET_URIS = [
   "ui://margin-of-safety/worksheet-v5.html",
   "ui://margin-of-safety/worksheet-v6.html",
   "ui://margin-of-safety/worksheet-v7.html",
+  "ui://margin-of-safety/worksheet-v8.html",
 ];
 // Required exactly. An unrecognised type renders as "Error loading app".
 const WIDGET_MIME = "text/html;profile=mcp-app";
@@ -303,6 +304,10 @@ function dispatch(msg, origin) {
         && Array.isArray(f.income) && f.income.length
         && Array.isArray(f.balance) && f.balance.length
         && Array.isArray(f.cashFlow) && f.cashFlow.length);
+      const fc = f && f.forecast;
+      const hasForecast = !!(fc && Array.isArray(fc.periods) && fc.periods.length
+        && Array.isArray(fc.income) && fc.income.length
+        && Array.isArray(fc.cashFlow) && fc.cashFlow.length);
 
       const { ev, vals } = expectedValue(worksheet);
       const pct = Math.round((ev / worksheet.mark.value) * 100);
@@ -354,6 +359,16 @@ function dispatch(msg, origin) {
           + "Do NOT call the tool again for this company. Instead, include the three "
           + "statements as markdown tables in your text reply, from the filings you "
           + "already researched."]),
+        ...(hasStatements && !hasForecast ? ["",
+          "MISSING: the forecast. Historicals arrived but no forward model, so the "
+          + "bridge from reported numbers to the scenario parameters is not on the "
+          + "worksheet. Do NOT call the tool again — put the forecast (income, balance "
+          + "sheet, cash flow to the steady-state year, with its basis) as markdown "
+          + "tables in your text reply."] : []),
+        "",
+        "If the user wants an Excel workbook, either point them at the worksheet's "
+          + "'Download workbook (.xlsx)' button, or build the .xlsx yourself with your "
+          + "file tools from structuredContent.worksheet — never by re-calling this tool.",
       ].join("\n");
 
       return rpcResult(id, {

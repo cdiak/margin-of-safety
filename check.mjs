@@ -19,7 +19,7 @@
 
 import { WIDGET_HTML } from "./widget.js";
 
-const RESOURCE_URI = "ui://margin-of-safety/worksheet-v8.html";
+const RESOURCE_URI = "ui://margin-of-safety/worksheet-v9.html";
 
 async function fetchDeployed(base) {
   const res = await fetch(base.replace(/\/$/, "") + "/mcp", {
@@ -54,9 +54,15 @@ function check(html, label) {
   // never an identifier. A guard that reports things that cannot break gets
   // ignored, and then it stops guarding anything.
   const BENIGN = new Set(["__PURE__"]);
-  const used = new Set(
-    (src.match(/\b__[A-Za-z_$][\w$]*/g) || []).filter((n) => !BENIGN.has(n))
-  );
+  // Property accesses (window.__x, obj.__x) cannot throw a ReferenceError —
+  // only free identifiers can. Skip matches preceded by a dot.
+  const used = new Set();
+  const re = /\b__[A-Za-z_$][\w$]*/g;
+  let m;
+  while ((m = re.exec(src))) {
+    if (src[m.index - 1] === ".") continue;
+    if (!BENIGN.has(m[0])) used.add(m[0]);
+  }
   const defined = new Set(
     (src.match(/(?:const|let|var|function)\s+(__[A-Za-z_$][\w$]*)/g) || [])
       .map((m) => m.replace(/^(?:const|let|var|function)\s+/, ""))

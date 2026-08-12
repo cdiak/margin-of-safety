@@ -62,6 +62,7 @@ function bootWidget(worksheet, widgetState) {
   );
 
   const win = {
+    __exposeForTests: true,
     openai: {
       toolInput: worksheet,
       widgetState,
@@ -81,7 +82,7 @@ function bootWidget(worksheet, widgetState) {
 
   const text = (id) => byId.get(id)?.textContent ?? "";
   return { ev: text("ev-num"), k: text("k-val"), hdrK: text("hdr-k"), saved: win.__saved,
-    rootHtml: byId.get("mos-root")?.innerHTML ?? "" };
+    rootHtml: byId.get("mos-root")?.innerHTML ?? "", buildWorkbook: win.__mosBuildWorkbook };
 }
 
 /* ---------- fixture ---------- */
@@ -208,7 +209,11 @@ console.log("\nthe three statements");
   withFin.financials = { unit: "$B", periods: ["FY2025", "FY2026"],
     income: [{ line: "Revenue", values: [60, 64] }],
     balance: [{ line: "Total assets", values: [130, 139] }],
-    cashFlow: [{ line: "Free cash flow", values: [11, 12] }] };
+    cashFlow: [{ line: "Free cash flow", values: [11, 12] }],
+    forecast: { periods: ["FY2027E"], basis: "b",
+      income: [{ line: "Revenue", values: [68] }],
+      balance: [{ line: "Total equity", values: [32] }],
+      cashFlow: [{ line: "Free cash flow", values: [13] }] } };
   const fin = bootWidget(withFin, null);
   check("widget renders supplied statements as tables",
     /Income statement/.test(fin.rootHtml) && /Free cash flow/.test(fin.rootHtml)
@@ -222,7 +227,86 @@ console.log("\nthe three statements");
 
   const svFin = await serverCall(withFin);
   check("server stays quiet when the statements are supplied",
-    /MISSING: the three statements/.test(svFin.content[0].text), false);
+    /MISSING:/.test(svFin.content[0].text), false);
+
+  const histOnly = clone();
+  histOnly.financials = { unit: "$B", periods: ["FY2026"],
+    income: [{ line: "Revenue", values: [64] }],
+    balance: [{ line: "Total assets", values: [139] }],
+    cashFlow: [{ line: "Free cash flow", values: [12] }] };
+  const svHist = await serverCall(histOnly);
+  check("server flags a missing forecast when historicals arrived",
+    /MISSING: the forecast/.test(svHist.content[0].text), true);
+  check("  every response carries the workbook route",
+    /Download workbook \(.xlsx\)/.test(svHist.content[0].text), true);
+}
+
+console.log("\nthe workbook");
+
+// The workbook must be a genuine .xlsx: a well-formed zip whose sheets parse
+// as XML and carry the worksheet's numbers. Validated with an independent
+// implementation (Python's zipfile), not with the code that wrote it.
+{
+  const { writeFileSync, rmSync } = await import("node:fs");
+  const { spawnSync } = await import("node:child_process");
+
+  const wbFixture = clone();
+  wbFixture.financials = { unit: "$B", periods: ["FY2025", "FY2026"],
+    income: [{ line: "Revenue", values: [60, 64.5] }],
+    balance: [{ line: "Total assets", values: [130, 139] }],
+    cashFlow: [{ line: "Free cash flow", values: [11, 12.1] }],
+    forecast: { periods: ["FY2027E", "FY2028E"],
+      basis: "Base-case scenario: revenue +6%, FCF margin to 20%.",
+      income: [{ line: "Revenue", values: [68, 72] }],
+      balance: [{ line: "Total equity", values: [32, 35] }],
+      cashFlow: [{ line: "Free cash flow", values: [13.4, 15] }] } };
+
+  const booted = bootWidget(wbFixture, null);
+  check("widget exposes a workbook builder", typeof booted.buildWorkbook, "function");
+
+  const bytes = booted.buildWorkbook();
+  check("workbook is non-trivial", bytes instanceof Uint8Array && bytes.length > 2000, true);
+
+  const path = "/tmp/mos-wb-test.xlsx";
+  writeFileSync(path, bytes);
+  const py = spawnSync("python3", ["-c", `
+import zipfile, xml.dom.minidom, sys
+z = zipfile.ZipFile("${path}")
+assert z.testzip() is None, "corrupt entry"
+names = z.namelist()
+for part in ["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml",
+             "xl/_rels/workbook.xml.rels", "xl/worksheets/sheet1.xml",
+             "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml"]:
+    assert part in names, "missing " + part
+for n in names:
+    xml.dom.minidom.parseString(z.read(n))   # every part is well-formed XML
+s1 = z.read("xl/worksheets/sheet1.xml").decode()
+s3 = z.read("xl/worksheets/sheet3.xml").decode()
+assert "Testco" in s1, "company missing from Valuation"
+assert "8.5" in s1, "live K missing from Valuation"
+assert "FY2027E" in s3 and "Base-case scenario" in s3, "forecast content missing"
+print("xlsx-ok")
+`], { encoding: "utf8" });
+  if (py.error && py.error.code === "ENOENT") {
+    console.log("  skip  python3 not available for independent validation");
+  } else {
+    check("independent reader opens it and finds the numbers",
+      (py.stdout || "").trim(), "xlsx-ok");
+    if ((py.stdout || "").trim() !== "xlsx-ok") console.error(py.stderr);
+  }
+  rmSync(path, { force: true });
+
+  check("forecast renders in the widget",
+    /FORECAST — GROUNDED IN THE SCENARIO ANALYSIS/.test(booted.rootHtml)
+      && /FY2027E/.test(booted.rootHtml) && /Basis:/.test(booted.rootHtml), true);
+
+  const noFc = clone();
+  noFc.financials = { unit: "$B", periods: ["FY2026"],
+    income: [{ line: "Revenue", values: [64.5] }],
+    balance: [{ line: "Total assets", values: [139] }],
+    cashFlow: [{ line: "Free cash flow", values: [12.1] }] };
+  check("missing forecast is named, not hidden",
+    /Forecast not supplied on this run/.test(bootWidget(noFc, null).rootHtml), true);
 }
 
 console.log("\ndata source priority");
